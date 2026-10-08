@@ -111,7 +111,7 @@ noscript .ld2{opacity:1;animation:none}
 </style></head><body>
 <header><div class="hw"><button class="logo" onclick="home()"><span class="lg">🎮</span>SpelPlaza</button><label class="sr"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" placeholder="Zoek een spel" autocomplete="off"></label><button id="mpbtn" class="hb" onclick="mpOpen()">👥<span> Samen spelen</span></button><button id="th" aria-label="Licht of donker thema">🌙</button></div></header>
 <main>
-<section id="home"><div class="top"><div><h1>Alle spellen<span id="cnt"></span></h1><p>Gratis, zonder download, op telefoon en computer.</p></div><button class="btn" onclick="launch(G[R(G.length)])">🎲 Verras me</button></div><nav class="chips" id="chips"></nav><div id="lists"><div class="ld"><div class="sp"></div><p>Spellen laden…</p><p class="ld2">Blijft dit staan? Dan draait JavaScript niet in deze weergave — dat gebeurt bij het "voorbeeld" van een gedownload bestand op een telefoon. Open SpelPlaza via de Claude-link in Safari of Chrome, dan werkt alles.</p></div><noscript><p class="ld2">JavaScript staat uit in deze weergave. Open SpelPlaza via de Claude-link in Safari of Chrome.</p></noscript></div></section>
+<section id="home"><div class="top"><div><h1>Alle spellen<span id="cnt"></span></h1><p>Gratis, zonder download, op telefoon en computer.</p></div><button class="btn" onclick="launch(G[R(G.length)])">🎲 Verras me</button></div><nav class="chips" id="chips"></nav><div id="lists"><div class="ld"><div class="sp"></div><p>Spellen laden…</p><p class="ld2">Blijft dit staan? Dan draait JavaScript niet in deze weergave — dat gebeurt bij het "voorbeeld" van een gedownload bestand op een telefoon. Open SpelPlaza via de website <a href="https://robertskvar-ux.github.io/spelplaza/">robertskvar-ux.github.io/spelplaza</a> in Safari of Chrome, dan werkt alles.</p></div><noscript><p class="ld2">JavaScript staat uit in deze weergave. Open SpelPlaza via de website <a href="https://robertskvar-ux.github.io/spelplaza/">robertskvar-ux.github.io/spelplaza</a>.</p></noscript></div></section>
 <section id="mp"><div id="mpb"></div></section>
 <section id="play"><div id="bar"><button class="gh bk">‹ Alle spellen</button><h2 id="pt"></h2><button class="gh fs" title="Volledig scherm" aria-label="Volledig scherm" style="display:none">⛶</button><button class="gh rs">↻ Opnieuw</button></div><div id="stage"></div></section>
 </main><footer>SpelPlaza — gratis spelletjes in je browser</footer><script>(function(){var n=0;function show(m){try{var e=document.getElementById('err');if(!e)return;n++;if(n>3)return;e.style.display='block';e.innerHTML='<button onclick="location.reload()">Herlaad</button><button onclick="this.parentNode.style.display=\'none\'">✕</button><b>Er ging iets mis</b><code></code>';e.querySelector('code').textContent=m}catch(x){}}
@@ -6362,13 +6362,14 @@ function mpOpen() {
   else showLobby();
   scrollTo(0, 0);
 }
+const SITE = "https://robertskvar-ux.github.io/spelplaza/";
 const NET_OK = () => typeof RTCPeerConnection !== "undefined" && typeof WebSocket !== "undefined";
 function mpStart() {
   const b = $("#mpb");
   b.innerHTML = "";
   const nm = LS("sp_name") || "";
   if (!NET_OK()) {
-    b.append(E("div", "mpc", `<h2>Samen spelen</h2><p class="hint" style="font-size:14px;line-height:1.5">In deze omgeving (de ingebouwde Claude-weergave) zijn rechtstreekse verbindingen tussen browsers geblokkeerd, dus een kamer maken lukt hier niet.</p><p class="hint" style="font-size:14px;line-height:1.5">Open SpelPlaza via de gewone website-link, of open het gedownloade bestand op een computer in Chrome, Safari of Firefox — daar werkt samen spelen wel. Solo-spellen werken hier gewoon.</p>`));
+    b.append(E("div", "mpc", `<h2>Samen spelen</h2><p class="hint" style="font-size:14px;line-height:1.5">In deze omgeving (de ingebouwde Claude-weergave) zijn rechtstreekse verbindingen tussen browsers geblokkeerd, dus een kamer maken lukt hier niet.</p><p class="hint" style="font-size:14px;line-height:1.5">Open SpelPlaza via de website — daar werkt samen spelen op elke telefoon en computer, zonder account. Solo-spellen werken hier gewoon.</p><div class="mpr"><a class="btn" href="${SITE}" target="_blank" rel="noopener" style="text-decoration:none;text-align:center">Open de website ↗</a></div><p class="hint" style="margin-top:10px">${SITE.replace("https://", "")}</p>`));
     const bk = E("button", "btn sec", "‹ Terug naar de spellen");
     bk.onclick = home;
     b.append(bk);
@@ -6437,7 +6438,7 @@ function showLobby() {
   const b = $("#mpb");
   b.innerHTML = "";
   const n = NET.players.length;
-  const top = E("div", "mpc", `<div class="code"><small>Kamercode</small><b>${NET.code}</b><div class="mpr"><button class="btn sec" id="cpc">Code kopiëren</button>${location.protocol === "file:" ? "" : '<button class="btn sec" id="cpl">Link delen</button>'}</div><p class="hint">Deel de code${location.protocol === "file:" ? "" : " of de link"} met je vrienden. Zij klikken op <b>Samen spelen</b> en voeren de code in.</p></div>
+  const top = E("div", "mpc", `<div class="code"><small>Kamercode</small><b>${NET.code}</b><div class="mpr"><button class="btn sec" id="cpc">Code kopiëren</button>${location.protocol === "file:" ? "" : '<button class="btn sec" id="cpl">Link delen</button>'}</div></div><p class="hint">Deel de code${location.protocol === "file:" ? "" : " of de link"} met je vrienden. Zij klikken op <strong>Samen spelen</strong> en voeren de code in.</p>
    <h3>Spelers <span class="mu" id="mpl">${n} speler${n == 1 ? "" : "s"}</span></h3><ul class="pl">${NET.players.map((p) => `<li>${p.host ? "👑 " : "🙂 "}${esc(p.name)}${p.id === NET.me.id ? ' <span class="mu">(jij)</span>' : ""}</li>`).join("")}</ul>`);
   b.append(top);
   $("#cpc").onclick = () => {
