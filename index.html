@@ -3035,19 +3035,29 @@ const MP = [
       delete window.__dbg;
     };
   } },
-  { id: "tron", n: "Tron lichtcycli", e: "🏍️", c: "Samen", g: "#0f2027,#2c5364", min: 2, max: 2, run(st, net) {
-    const N = 60, CS = 6, W = N * CS, WIN = 3, SPD = 15, me = net.myIndex(), HOST = net.isHost, DX = [1, 0, -1, 0], DY = [0, 1, 0, -1];
-    const COL = ["#2f80ed", "#f4a261"], names = ["…", "…"], ids = [null, null];
+  { id: "tron", n: "Tron lichtcycli", e: "🏍️", c: "Samen", g: "#0f2027,#2c5364", min: 2, max: 4, run(st, net) {
+    const HOST = net.isHost, DX = [1, 0, -1, 0], DY = [0, 1, 0, -1], WIN = 3, SPD = 15;
+    const seat0 = net.players.slice(0, 4), P = Math.max(2, seat0.length), N = P > 2 ? 72 : 60, CS = 360 / N, W = N * CS;
+    const SP = P > 2 ? [[12, 30, 0], [59, 41, 2], [41, 12, 1], [30, 59, 3]] : [[14, 30, 0], [45, 30, 2]];
+    const COL = seat0.map((p) => net.pcol(p)), names = seat0.map((p) => net.pname(p)), avs = seat0.map((p) => p.av || "🙂");
+    while (COL.length < P) {
+      COL.push("#888");
+      names.push("…");
+      avs.push("🙂");
+    }
     const hx = (h) => [1, 3, 5].map((i) => parseInt(String(h).slice(i, i + 2), 16) || 0), mix = (h, t) => "rgb(" + hx(h).map((q) => Math.round(q + (255 - q) * t)).join(",") + ")";
-    const sc = E("div", "sc"), c = mkCanvas(st, W, W), x = c.getContext("2d");
+    const sc = E("div", "sc"), note = E("div", "hint"), c = mkCanvas(st, W, W), x = c.getContext("2d");
     st.prepend(sc);
-    st.append(E("div", "hint", "Pijltjes, WASD, veeg op het veld of de knoppen = afslaan · bots nergens tegenaan · 3 rondes wint"));
-    let gone = 0, left = "", last = null, fl = 0, parts = [], acc = 0, tick = 0, occ, ended = 0;
-    let S = { p: [[], []], d: [0, 2], a: [1, 1], s: [0, 0], cd: 3, w: -1, r: 1, rw: -1, rt: 0, c: 0 }, want = [-1, -1];
-    const K2D = { ArrowRight: 0, d: 0, ArrowDown: 1, s: 1, ArrowLeft: 2, a: 2, ArrowUp: 3, w: 3 };
+    c.before(note);
+    note.style.cssText = "margin:2px 0;min-height:" + (P > 2 ? "18px" : "0");
+    st.append(E("div", "hint", "Pijltjes, WASD, veeg op het veld of de knoppen = afslaan · bots nergens tegenaan · laatste die rijdt wint de ronde · 3 rondes wint"));
+    let gone = 0, left = "", last = null, fl = 0, parts = [], acc = 0, tick = 0, occ, ended = 0, noteT = 0;
+    let S = { ids: seat0.map((p) => p.id), q: Array(P).fill(0), p: [], d: [], a: [], s: Array(P).fill(0), cd: 3, w: -1, r: 1, rw: -1, rt: 0, c: 0 }, want = Array(P).fill(-1);
+    const myS = () => S.ids.indexOf(net.me.id), K2D = { ArrowRight: 0, d: 0, ArrowDown: 1, s: 1, ArrowLeft: 2, a: 2, ArrowUp: 3, w: 3 };
     function turn(d) {
-      if (S.w >= 0 || gone) return;
-      if (HOST) want[0] = d;
+      const me = myS();
+      if (me < 0 || S.w >= 0 || gone) return;
+      if (HOST) want[me] = d;
       else net.send({ k: "i", d });
     }
     const inp = input(st, [["◀", "ArrowLeft"], ["▲", "ArrowUp"], ["▼", "ArrowDown"], ["▶", "ArrowRight"]], (k) => {
@@ -3086,39 +3096,93 @@ const MP = [
       if (gone) ov(left ? "⚠️ " + left + " heeft het spel verlaten" : "Wachten op speler…", sub());
       else ov("");
     }
+    function say(t) {
+      note.textContent = t;
+      clearTimeout(noteT);
+      noteT = setTimeout(() => {
+        note.textContent = "";
+      }, 4e3);
+    }
     function line() {
       sc.replaceChildren();
-      [0, 1].forEach((i) => {
+      const me = myS();
+      if (P === 2) {
+        [0, 1].forEach((i) => {
+          const s = E("span");
+          s.style.color = COL[i];
+          s.textContent = names[i] + (i === me ? " (jij)" : "");
+          sc.append(s);
+          if (!i) {
+            const m = E("span");
+            m.textContent = "  " + S.s[0] + " – " + S.s[1] + "  ";
+            sc.append(m);
+          }
+        });
+      } else for (let i = 0; i < P; i++) {
         const s = E("span");
-        s.style.color = COL[i];
-        s.textContent = names[i] + (i === me ? " (jij)" : "");
+        s.style.cssText = "color:" + COL[i] + ";margin:0 5px;white-space:nowrap;" + (S.q[i] ? "opacity:.35;text-decoration:line-through;" : !S.a[i] && S.cd <= 0 ? "opacity:.5;" : "") + (i === me ? "text-decoration:underline;" : "");
+        s.textContent = avs[i] + " " + S.s[i] + (i === me ? " (jij)" : "");
         sc.append(s);
-        if (!i) {
-          const m = E("span");
-          m.textContent = "  " + S.s[0] + " – " + S.s[1] + "  ";
-          sc.append(m);
-        }
-      });
+      }
       const r = E("span");
       r.style.color = "var(--mu)";
       r.textContent = S.w >= 0 ? " · 🏆 " + names[S.w] + " wint" : " · ronde " + S.r;
       sc.append(r);
     }
     function conn() {
-      net.players.forEach((p, i) => {
-        if (i > 1) return;
-        names[i] = net.pname(p);
-        COL[i] = net.pcol(p);
-        ids[i] = p.id;
-      });
-      const was = gone;
-      if (net.players.length < 2) {
-        gone = 1;
-        if (!was) left = names[1 - me] === "…" ? "" : names[1 - me];
+      const ps = net.players, ids = new Set(ps.map((p) => p.id));
+      for (let i = 0; i < P; i++) {
+        const p = ps.find((q) => q.id === S.ids[i]);
+        if (p) {
+          names[i] = net.pname(p);
+          COL[i] = net.pcol(p);
+          avs[i] = p.av || "🙂";
+        }
+      }
+      if (HOST) {
+        let ch = 0;
+        for (let i = 0; i < P; i++) if (!S.q[i] && !ids.has(S.ids[i])) {
+          S.q[i] = 1;
+          ch = 1;
+          say("⚠️ " + names[i] + " heeft het spel verlaten");
+          if (S.a[i]) {
+            S.a[i] = 0;
+            if (S.q.filter((q) => !q).length >= 2) settle();
+          }
+        }
+        const act = () => S.q.filter((q) => !q).length;
+        if (act() < 2) {
+          ps.forEach((p) => {
+            if (S.ids.includes(p.id)) return;
+            const i = S.q.indexOf(1);
+            if (i < 0) return;
+            S.ids[i] = p.id;
+            S.q[i] = 0;
+            names[i] = net.pname(p);
+            COL[i] = net.pcol(p);
+            avs[i] = p.av || "🙂";
+          });
+        }
+        const was = gone;
+        if (act() < 2) {
+          gone = 1;
+          if (!was) {
+            const i = S.q.indexOf(1);
+            left = i >= 0 && names[i] !== "…" ? names[i] : "";
+          }
+        } else {
+          gone = 0;
+          left = "";
+          if (was && S.w < 0) newRound();
+        }
       } else {
-        gone = 0;
-        left = "";
-        if (HOST && was && S.w < 0) newRound();
+        const act = S.q.filter((q) => !q).length, was = gone;
+        gone = ps.length < 2 || act < 2 ? 1 : 0;
+        if (gone && !was) {
+          const o = S.ids.findIndex((id) => id !== net.me.id && !ids.has(id)), i = S.q.indexOf(1);
+          left = o >= 0 ? names[o] : i >= 0 ? names[i] : "";
+        }
+        if (!gone) left = "";
       }
       refresh();
       line();
@@ -3127,24 +3191,46 @@ const MP = [
       if (S.w < 0 || ended) return;
       ended = 1;
       line();
-      net.result({ winner: ids[S.w], scores: { [ids[0]]: S.s[0], [ids[1]]: S.s[1] }, unit: " rondes", text: "Beslist na " + S.r + " rondes · eerste tot " + WIN });
+      const scores = {};
+      S.ids.forEach((id, i) => scores[id] = S.s[i]);
+      net.result({ winner: S.ids[S.w], scores, unit: " rondes", text: "Beslist na " + S.r + " rondes · eerste tot " + WIN });
     }
     function newRound() {
-      S.p = [[14, 30, 14, 30], [45, 30, 45, 30]];
-      S.d = [0, 2];
-      S.a = [1, 1];
+      occ = new Uint8Array(N * N);
+      S.p = [];
+      S.d = [];
+      S.a = [];
+      for (let i = 0; i < P; i++) {
+        const [a, b, d] = SP[i];
+        S.p.push([a, b, a, b]);
+        S.d.push(d);
+        S.a.push(S.q[i] ? 0 : 1);
+        if (!S.q[i]) occ[b * N + a] = i + 1;
+      }
       S.cd = 3;
       S.rw = -1;
       S.rt = 0;
-      want = [-1, -1];
-      occ = new Uint8Array(N * N);
-      occ[30 * N + 14] = 1;
-      occ[30 * N + 45] = 2;
+      want = Array(P).fill(-1);
       acc = 0;
     }
+    function settle() {
+      if (S.rt > 0 || S.w >= 0) return;
+      const al = [];
+      S.a.forEach((a, i) => {
+        if (a) al.push(i);
+      });
+      if (al.length > 1) return;
+      S.rw = al.length ? al[0] : -2;
+      S.rt = 1.8;
+      if (S.rw >= 0) {
+        S.s[S.rw]++;
+        if (S.s[S.rw] >= WIN) S.w = S.rw;
+      }
+    }
     function step() {
-      const nh = [], cr = [0, 0];
-      for (let i = 0; i < 2; i++) {
+      const nh = [], cr = Array(P).fill(0);
+      let any = 0;
+      for (let i = 0; i < P; i++) {
         if (!S.a[i]) {
           nh.push(null);
           continue;
@@ -3159,24 +3245,18 @@ const MP = [
         nh.push([hx2, hy]);
         if (hx2 < 0 || hy < 0 || hx2 >= N || hy >= N || occ[hy * N + hx2]) cr[i] = 1;
       }
-      if (nh[0] && nh[1] && nh[0][0] === nh[1][0] && nh[0][1] === nh[1][1]) cr[0] = cr[1] = 1;
-      for (let i = 0; i < 2; i++) if (nh[i]) {
+      for (let i = 0; i < P; i++) for (let j = i + 1; j < P; j++) if (nh[i] && nh[j] && nh[i][0] === nh[j][0] && nh[i][1] === nh[j][1]) cr[i] = cr[j] = 1;
+      for (let i = 0; i < P; i++) if (nh[i]) {
         const p = S.p[i];
         p[p.length - 2] = nh[i][0];
         p[p.length - 1] = nh[i][1];
         if (cr[i]) {
           S.a[i] = 0;
           S.c++;
+          any = 1;
         } else occ[nh[i][1] * N + nh[i][0]] = i + 1;
       }
-      if (cr[0] || cr[1]) {
-        S.rw = S.a[0] ? 0 : S.a[1] ? 1 : 2;
-        S.rt = 1.8;
-        if (S.rw < 2) {
-          S.s[S.rw]++;
-          if (S.s[S.rw] >= WIN) S.w = S.rw;
-        }
-      }
+      if (any) settle();
     }
     function sim(dt) {
       if (S.rt > 0) {
@@ -3198,14 +3278,14 @@ const MP = [
         if (S.rt <= 0) step();
       }
     }
-    const snap = () => ({ c: S.c, cd: Math.ceil(S.cd), w: S.w, s: S.s.join(), r: S.r, a: S.a.slice() });
+    const snap = () => ({ c: S.c, cd: Math.ceil(S.cd), w: S.w, s: S.s.join(), r: S.r, a: S.a.slice(), q: S.q.join(), ids: S.ids.join() });
     function fx() {
-      const n = snap();
+      const n = snap(), me = myS();
       if (last) {
         if (n.c !== last.c) {
           fl = 1;
           n.a.forEach((a, i) => {
-            if (!a && last.a[i]) {
+            if (!a && last.a[i] && S.p[i]) {
               const p = S.p[i], hx2 = p[p.length - 2] * CS + CS / 2, hy = p[p.length - 1] * CS + CS / 2;
               beep(i === me ? 120 : 300, 0.35, "sawtooth", 0.05);
               for (let k = 0; k < 30; k++) {
@@ -3216,29 +3296,40 @@ const MP = [
           });
         }
         if (n.cd !== last.cd && last.cd > 0) beep(n.cd ? 440 : 700, n.cd ? 0.06 : 0.15, "square", 0.03);
-        if (n.s !== last.s || n.r !== last.r) line();
+        if (n.ids !== last.ids) conn();
+        if (n.s !== last.s || n.r !== last.r || n.q !== last.q || n.a.join() !== last.a.join() || n.cd === 0 !== (last.cd === 0)) line();
+        if (!HOST && n.q !== last.q) {
+          const qa = last.q.split(",");
+          S.q.forEach((q, i) => {
+            if (q && qa[i] === "0") say("⚠️ " + names[i] + " heeft het spel verlaten");
+          });
+          conn();
+        }
         if (n.w !== last.w) beep(n.w === me ? 880 : 220, 0.4, "triangle", 0.05);
       }
       last = n;
       endCheck();
     }
     const off = net.on((d, from) => {
-      var _a;
       if (!d || typeof d !== "object") return;
       if (HOST) {
-        if (d.k === "i" && from === ((_a = net.players[1]) == null ? void 0 : _a.id) && d.d >= 0 && d.d < 4) want[1] = d.d | 0;
-      } else if (d.k === "s") {
-        S = { p: d.p, d: d.d, a: d.a, s: d.s, cd: d.cd, w: d.w, r: d.r, rw: d.rw, rt: d.rt, c: d.c };
+        if (d.k === "i" && d.d >= 0 && d.d < 4) {
+          const i = S.ids.indexOf(from);
+          if (i > 0 && !S.q[i]) want[i] = d.d | 0;
+        }
+      } else if (d.k === "s" && Array.isArray(d.p) && d.p.length === P) {
+        S = { ids: d.ids, q: d.q, p: d.p, d: d.d, a: d.a, s: d.s, cd: d.cd, w: d.w, r: d.r, rw: d.rw, rt: d.rt, c: d.c };
       }
     });
     const offP = net.onPlayers(conn);
     function trail(i) {
       const p = S.p[i];
-      if (p.length < 2) return;
+      if (!p || p.length < 2) return;
       x.lineCap = x.lineJoin = "round";
-      [[CS + 6, 0.2, COL[i]], [CS - 1.5, 1, COL[i]], [CS - 4, 0.8, mix(COL[i], 0.55)]].forEach(([lw, al, col]) => {
+      x.globalAlpha = 1;
+      [[CS + 6, 0.2, COL[i]], [CS - 1.5, 1, COL[i]], [Math.max(1, CS - 4), 0.8, mix(COL[i], 0.55)]].forEach(([lw, al, col]) => {
         x.strokeStyle = col;
-        x.globalAlpha = al;
+        x.globalAlpha = al * (S.q[i] ? 0.4 : 1);
         x.lineWidth = lw;
         x.beginPath();
         x.moveTo(p[0] * CS + CS / 2, p[1] * CS + CS / 2);
@@ -3255,12 +3346,13 @@ const MP = [
       }
     }
     function draw2(dt) {
+      const me = myS();
       x.fillStyle = "#0e1020";
       x.fillRect(0, 0, W, W);
       x.strokeStyle = "#171c3a";
       x.lineWidth = 1;
       x.beginPath();
-      for (let i = CS * 5; i < W; i += CS * 5) {
+      for (let i = CS * (P > 2 ? 6 : 5); i < W; i += CS * (P > 2 ? 6 : 5)) {
         x.moveTo(i + 0.5, 0);
         x.lineTo(i + 0.5, W);
         x.moveTo(0, i + 0.5);
@@ -3270,8 +3362,23 @@ const MP = [
       x.strokeStyle = "#2a2f55";
       x.lineWidth = 3;
       x.strokeRect(1.5, 1.5, W - 3, W - 3);
-      trail(0);
-      trail(1);
+      for (let i = 0; i < P; i++) trail(i);
+      if (S.cd > 0 && S.rt <= 0 && S.p.length) for (let i = 0; i < P; i++) {
+        if (!S.a[i]) continue;
+        const p = S.p[i], hx2 = p[p.length - 2] * CS + CS / 2, hy = p[p.length - 1] * CS + CS / 2, d = S.d[i];
+        x.fillStyle = mix(COL[i], 0.3);
+        x.beginPath();
+        x.moveTo(hx2 + DX[d] * 16, hy + DY[d] * 16);
+        x.lineTo(hx2 + DX[d] * 8 - DY[d] * 5, hy + DY[d] * 8 + DX[d] * 5);
+        x.lineTo(hx2 + DX[d] * 8 + DY[d] * 5, hy + DY[d] * 8 - DX[d] * 5);
+        x.fill();
+        if (i === me) {
+          x.font = "bold 11px system-ui,sans-serif";
+          x.textAlign = "center";
+          x.fillStyle = "#fff";
+          x.fillText("jij", hx2 - DX[d] * 14, hy - DY[d] * 14 + 4);
+        }
+      }
       for (const p of parts) {
         p.x += p.vx * dt;
         p.y += p.vy * dt;
@@ -3305,8 +3412,8 @@ const MP = [
         x.font = "bold 24px system-ui,sans-serif";
         x.shadowColor = "#000";
         x.shadowBlur = 8;
-        x.fillStyle = S.rw === 2 ? "#fff" : mix(COL[S.rw], 0.45);
-        x.fillText(S.rw === 2 ? "Gelijk! Niemand scoort" : S.rw === me ? "Jij wint de ronde!" : names[S.rw] + " wint de ronde", W / 2, W / 2 - 60);
+        x.fillStyle = S.rw < 0 ? "#fff" : mix(COL[S.rw], 0.45);
+        x.fillText(S.rw < 0 ? "Gelijk! Niemand scoort" : S.rw === me ? "Jij wint de ronde!" : names[S.rw] + " wint de ronde", W / 2, W / 2 - 60);
         x.shadowBlur = 0;
       }
     }
@@ -3316,7 +3423,7 @@ const MP = [
         tick += dt;
         if (tick >= 0.04) {
           tick = Math.min(tick - 0.04, 0.04);
-          net.send({ k: "s", p: S.p, d: S.d, a: S.a, s: S.s, cd: Math.round(S.cd * 100) / 100, w: S.w, r: S.r, rw: S.rw, rt: Math.round(S.rt * 100) / 100, c: S.c });
+          net.send({ k: "s", ids: S.ids, q: S.q, p: S.p, d: S.d, a: S.a, s: S.s, cd: Math.round(S.cd * 100) / 100, w: S.w, r: S.r, rw: S.rw, rt: Math.round(S.rt * 100) / 100, c: S.c });
         }
       }
       fx();
@@ -3331,6 +3438,7 @@ const MP = [
       inp.stop();
       off();
       offP();
+      clearTimeout(noteT);
       c.onpointerdown = c.onpointerup = null;
       delete window.__dbg;
     };
@@ -3727,20 +3835,31 @@ const MP = [
       delete window.__dbg;
     };
   } },
-  { id: "snakeduel", n: "Slangenduel", e: "🐍", c: "Samen", g: "#11998e,#38ef7d", min: 2, max: 2, run(st, net) {
-    const N = 24, CS = 15, W = N * CS, WIN = 3, TPS = 8, me = net.myIndex(), HOST = net.isHost, DX = [1, 0, -1, 0], DY = [0, 1, 0, -1];
-    const COL = ["#7cb518", "#8338ec"], LT = ["", ""], names = ["…", "…"], ids = [null, null];
+  { id: "snakeduel", n: "Slangenduel", e: "🐍", c: "Samen", g: "#11998e,#38ef7d", min: 2, max: 4, run(st, net) {
+    const HOST = net.isHost, DX = [1, 0, -1, 0], DY = [0, 1, 0, -1], WIN = 3, TPS = 8;
+    const seat0 = net.players.slice(0, 4), P = Math.max(2, seat0.length), N = P > 2 ? 28 : 24, CS = P > 2 ? 13 : 15, W = N * CS, AP = P;
+    const SP = P > 2 ? [[[5, 9, 4, 9, 3, 9], 0], [[22, 18, 23, 18, 24, 18], 2], [[18, 5, 18, 4, 18, 3], 1], [[9, 22, 9, 23, 9, 24], 3]] : [[[4, 12, 3, 12, 2, 12], 0], [[19, 12, 20, 12, 21, 12], 2]];
+    const COL = seat0.map((p) => net.pcol(p)), names = seat0.map((p) => net.pname(p)), avs = seat0.map((p) => p.av || "🙂"), LT = [];
+    while (COL.length < P) {
+      COL.push("#888");
+      names.push("…");
+      avs.push("🙂");
+    }
     const hx = (h) => [1, 3, 5].map((i) => parseInt(String(h).slice(i, i + 2), 16) || 0), mix = (h, t) => "rgb(" + hx(h).map((q2) => Math.round(q2 + (255 - q2) * t)).join(",") + ")";
-    const sc = E("div", "sc"), c = mkCanvas(st, W, W), x = c.getContext("2d");
+    COL.forEach((c2, i) => LT[i] = mix(c2, 0.3));
+    const sc = E("div", "sc"), note = E("div", "hint"), c = mkCanvas(st, W, W), x = c.getContext("2d");
     st.prepend(sc);
-    st.append(E("div", "hint", "Pijltjes, WASD, veeg op het bord of de knoppen · eet 🍎 om te groeien · bots nergens tegen · 3 rondes wint"));
-    let gone = 0, left = "", last = null, fl = 0, parts = [], acc = 0, tick = 0, ended = 0;
-    let S = { a: [[], []], d: [0, 2], al: [1, 1], ap: [], s: [0, 0], cd: 3, w: -1, r: 1, rw: -1, rt: 0, c: 0, e: 0 }, q = [[], []];
-    const K2D = { ArrowRight: 0, d: 0, ArrowDown: 1, s: 1, ArrowLeft: 2, a: 2, ArrowUp: 3, w: 3 };
+    c.before(note);
+    note.style.cssText = "margin:2px 0;min-height:" + (P > 2 ? "18px" : "0");
+    st.append(E("div", "hint", "Pijltjes, WASD, veeg op het bord of de knoppen · eet 🍎 om te groeien · bots nergens tegen · laatste slang wint de ronde · 3 rondes wint"));
+    let gone = 0, left = "", last = null, fl = 0, parts = [], acc = 0, tick = 0, ended = 0, noteT = 0;
+    let S = { ids: seat0.map((p) => p.id), q: Array(P).fill(0), a: [], d: [], al: [], ap: [], s: Array(P).fill(0), cd: 3, w: -1, r: 1, rw: -1, rt: 0, c: 0, e: 0 }, q = [];
+    const myS = () => S.ids.indexOf(net.me.id), K2D = { ArrowRight: 0, d: 0, ArrowDown: 1, s: 1, ArrowLeft: 2, a: 2, ArrowUp: 3, w: 3 };
     function turn(d) {
-      if (S.w >= 0 || gone) return;
+      const me = myS();
+      if (me < 0 || S.w >= 0 || gone) return;
       if (HOST) {
-        if (q[0].length < 2) q[0].push(d);
+        if (q[me].length < 2) q[me].push(d);
       } else net.send({ k: "i", d });
     }
     const inp = input(st, [["◀", "ArrowLeft"], ["▲", "ArrowUp"], ["▼", "ArrowDown"], ["▶", "ArrowRight"]], (k) => {
@@ -3779,40 +3898,91 @@ const MP = [
       if (gone) ov(left ? "⚠️ " + left + " heeft het spel verlaten" : "Wachten op speler…", sub());
       else ov("");
     }
+    function say(t) {
+      note.textContent = t;
+      clearTimeout(noteT);
+      noteT = setTimeout(() => {
+        note.textContent = "";
+      }, 4e3);
+    }
     function line() {
       sc.replaceChildren();
-      [0, 1].forEach((i) => {
+      const me = myS();
+      if (P === 2) {
+        [0, 1].forEach((i) => {
+          const s = E("span");
+          s.style.color = COL[i];
+          s.textContent = names[i] + (i === me ? " (jij)" : "");
+          sc.append(s);
+          if (!i) {
+            const m = E("span");
+            m.textContent = "  " + S.s[0] + " – " + S.s[1] + "  ";
+            sc.append(m);
+          }
+        });
+      } else for (let i = 0; i < P; i++) {
         const s = E("span");
-        s.style.color = COL[i];
-        s.textContent = names[i] + (i === me ? " (jij)" : "");
+        s.style.cssText = "color:" + COL[i] + ";margin:0 5px;white-space:nowrap;" + (S.q[i] ? "opacity:.35;text-decoration:line-through;" : !S.al[i] && S.cd <= 0 ? "opacity:.5;" : "") + (i === me ? "text-decoration:underline;" : "");
+        s.textContent = avs[i] + " " + S.s[i] + (i === me ? " (jij)" : "");
         sc.append(s);
-        if (!i) {
-          const m = E("span");
-          m.textContent = "  " + S.s[0] + " – " + S.s[1] + "  ";
-          sc.append(m);
-        }
-      });
+      }
       const r = E("span");
       r.style.color = "var(--mu)";
       r.textContent = S.w >= 0 ? " · 🏆 " + names[S.w] + " wint" : " · ronde " + S.r;
       sc.append(r);
     }
     function conn() {
-      net.players.forEach((p, i) => {
-        if (i > 1) return;
-        names[i] = net.pname(p);
-        COL[i] = net.pcol(p);
-        LT[i] = mix(COL[i], 0.3);
-        ids[i] = p.id;
-      });
-      const was = gone;
-      if (net.players.length < 2) {
-        gone = 1;
-        if (!was) left = names[1 - me] === "…" ? "" : names[1 - me];
+      const ps = net.players, ids = new Set(ps.map((p) => p.id));
+      for (let i = 0; i < P; i++) {
+        const p = ps.find((z) => z.id === S.ids[i]);
+        if (p) {
+          names[i] = net.pname(p);
+          COL[i] = net.pcol(p);
+          LT[i] = mix(COL[i], 0.3);
+          avs[i] = p.av || "🙂";
+        }
+      }
+      const act = () => S.q.filter((z) => !z).length;
+      if (HOST) {
+        for (let i = 0; i < P; i++) if (!S.q[i] && !ids.has(S.ids[i])) {
+          S.q[i] = 1;
+          say("⚠️ " + names[i] + " heeft het spel verlaten");
+          if (S.al[i]) {
+            S.al[i] = 0;
+            if (act() >= 2) settle();
+          }
+        }
+        if (act() < 2) ps.forEach((p) => {
+          if (S.ids.includes(p.id)) return;
+          const i = S.q.indexOf(1);
+          if (i < 0) return;
+          S.ids[i] = p.id;
+          S.q[i] = 0;
+          names[i] = net.pname(p);
+          COL[i] = net.pcol(p);
+          LT[i] = mix(COL[i], 0.3);
+          avs[i] = p.av || "🙂";
+        });
+        const was = gone;
+        if (act() < 2) {
+          gone = 1;
+          if (!was) {
+            const i = S.q.indexOf(1);
+            left = i >= 0 && names[i] !== "…" ? names[i] : "";
+          }
+        } else {
+          gone = 0;
+          left = "";
+          if (was && S.w < 0) newRound();
+        }
       } else {
-        gone = 0;
-        left = "";
-        if (HOST && was && S.w < 0) newRound();
+        const was = gone;
+        gone = ps.length < 2 || act() < 2 ? 1 : 0;
+        if (gone && !was) {
+          const o = S.ids.findIndex((id) => id !== net.me.id && !ids.has(id)), i = S.q.indexOf(1);
+          left = o >= 0 ? names[o] : i >= 0 ? names[i] : "";
+        }
+        if (!gone) left = "";
       }
       refresh();
       line();
@@ -3821,13 +3991,15 @@ const MP = [
       if (S.w < 0 || ended) return;
       ended = 1;
       line();
-      net.result({ winner: ids[S.w], scores: { [ids[0]]: S.s[0], [ids[1]]: S.s[1] }, unit: " rondes", text: "Beslist na " + S.r + " rondes · eerste tot " + WIN });
+      const scores = {};
+      S.ids.forEach((id, i) => scores[id] = S.s[i]);
+      net.result({ winner: S.ids[S.w], scores, unit: " rondes", text: "Beslist na " + S.r + " rondes · eerste tot " + WIN });
     }
     const occ = (cx, cy) => S.a.some((a) => {
       for (let k = 0; k < a.length; k += 2) if (a[k] === cx && a[k + 1] === cy) return 1;
     }) || S.ap.some((v, k) => k % 2 === 0 && v === cx && S.ap[k + 1] === cy);
     function spawn() {
-      for (let t = 0; t < 200; t++) {
+      for (let t = 0; t < 300; t++) {
         const cx = R(N), cy = R(N);
         if (!occ(cx, cy)) {
           S.ap.push(cx, cy);
@@ -3836,21 +4008,40 @@ const MP = [
       }
     }
     function newRound() {
-      S.a = [[4, 12, 3, 12, 2, 12], [19, 12, 20, 12, 21, 12]];
-      S.d = [0, 2];
-      S.al = [1, 1];
+      S.a = [];
+      S.d = [];
+      S.al = [];
+      for (let i = 0; i < P; i++) {
+        S.a.push(S.q[i] ? [] : SP[i][0].slice());
+        S.d.push(SP[i][1]);
+        S.al.push(S.q[i] ? 0 : 1);
+      }
       S.ap = [];
       S.cd = 3;
       S.rw = -1;
       S.rt = 0;
-      q = [[], []];
+      q = Array.from({ length: P }, () => []);
       acc = 0;
-      spawn();
-      spawn();
+      for (let k = 0; k < AP; k++) spawn();
+    }
+    function settle() {
+      if (S.rt > 0 || S.w >= 0) return;
+      const al = [];
+      S.al.forEach((a, i) => {
+        if (a) al.push(i);
+      });
+      if (al.length > 1) return;
+      S.rw = al.length ? al[0] : -2;
+      S.rt = 1.8;
+      if (S.rw >= 0) {
+        S.s[S.rw]++;
+        if (S.s[S.rw] >= WIN) S.w = S.rw;
+      }
     }
     function step() {
-      const nh = [], grow = [0, 0], cr = [0, 0];
-      for (let i = 0; i < 2; i++) {
+      const nh = [], grow = Array(P).fill(0), cr = Array(P).fill(0);
+      let any = 0;
+      for (let i = 0; i < P; i++) {
         if (!S.al[i]) {
           nh.push(null);
           continue;
@@ -3871,39 +4062,33 @@ const MP = [
           break;
         }
       }
-      for (let i = 0; i < 2; i++) {
+      for (let i = 0; i < P; i++) {
         if (!nh[i]) continue;
         const [hx2, hy] = nh[i];
         if (hx2 < 0 || hy < 0 || hx2 >= N || hy >= N) {
           cr[i] = 1;
           continue;
         }
-        for (let j = 0; j < 2; j++) {
+        for (let j = 0; j < P; j++) {
           const a = S.a[j], end = a.length - (grow[j] || !S.al[j] ? 0 : 2);
           for (let k = 0; k < end; k += 2) if (a[k] === hx2 && a[k + 1] === hy) cr[i] = 1;
         }
-        if (nh[1 - i] && nh[1 - i][0] === hx2 && nh[1 - i][1] === hy) cr[i] = 1;
+        for (let j = 0; j < P; j++) if (j !== i && nh[j] && nh[j][0] === hx2 && nh[j][1] === hy) cr[i] = 1;
       }
-      for (let i = 0; i < 2; i++) {
+      for (let i = 0; i < P; i++) {
         if (!nh[i]) continue;
         if (cr[i]) {
           S.al[i] = 0;
           S.c++;
+          any = 1;
           continue;
         }
         const a = S.a[i];
         a.unshift(nh[i][0], nh[i][1]);
         if (!grow[i]) a.length -= 2;
       }
-      for (let g = 0; g < 2 && S.ap.length < 4; g++) spawn();
-      if (cr[0] || cr[1]) {
-        S.rw = S.al[0] ? 0 : S.al[1] ? 1 : 2;
-        S.rt = 1.8;
-        if (S.rw < 2) {
-          S.s[S.rw]++;
-          if (S.s[S.rw] >= WIN) S.w = S.rw;
-        }
-      }
+      for (let g = 0; g < AP && S.ap.length < AP * 2; g++) spawn();
+      if (any) settle();
     }
     function sim(dt) {
       if (S.rt > 0) {
@@ -3925,15 +4110,15 @@ const MP = [
         if (S.rt <= 0) step();
       }
     }
-    const snap = () => ({ c: S.c, e: S.e, cd: Math.ceil(S.cd), w: S.w, s: S.s.join(), r: S.r, al: S.al.slice() });
+    const snap = () => ({ c: S.c, e: S.e, cd: Math.ceil(S.cd), w: S.w, s: S.s.join(), r: S.r, al: S.al.slice(), q: S.q.join(), ids: S.ids.join() });
     function fx() {
-      const n = snap();
+      const n = snap(), me = myS();
       if (last) {
         if (n.e !== last.e) beep(760, 0.06, "square", 0.03);
         if (n.c !== last.c) {
           fl = 1;
           n.al.forEach((a, i) => {
-            if (!a && last.al[i]) {
+            if (!a && last.al[i] && S.a[i] && S.a[i].length) {
               const h = S.a[i], hx2 = h[0] * CS + CS / 2, hy = h[1] * CS + CS / 2;
               beep(i === me ? 120 : 300, 0.35, "sawtooth", 0.05);
               for (let k = 0; k < 26; k++) {
@@ -3944,70 +4129,96 @@ const MP = [
           });
         }
         if (n.cd !== last.cd && last.cd > 0) beep(n.cd ? 440 : 700, n.cd ? 0.06 : 0.15, "square", 0.03);
-        if (n.s !== last.s || n.r !== last.r) line();
+        if (n.ids !== last.ids) conn();
+        if (n.s !== last.s || n.r !== last.r || n.q !== last.q || n.al.join() !== last.al.join() || n.cd === 0 !== (last.cd === 0)) line();
+        if (!HOST && n.q !== last.q) {
+          const qa = last.q.split(",");
+          S.q.forEach((z, i) => {
+            if (z && qa[i] === "0") say("⚠️ " + names[i] + " heeft het spel verlaten");
+          });
+          conn();
+        }
         if (n.w !== last.w) beep(n.w === me ? 880 : 220, 0.4, "triangle", 0.05);
       }
       last = n;
       endCheck();
     }
     const off = net.on((d, from) => {
-      var _a;
       if (!d || typeof d !== "object") return;
       if (HOST) {
-        if (d.k === "i" && from === ((_a = net.players[1]) == null ? void 0 : _a.id) && d.d >= 0 && d.d < 4 && q[1].length < 2) q[1].push(d.d | 0);
-      } else if (d.k === "s") {
-        S = { a: d.a, d: d.d, al: d.al, ap: d.ap, s: d.s, cd: d.cd, w: d.w, r: d.r, rw: d.rw, rt: d.rt, c: d.c, e: d.e };
+        if (d.k === "i" && d.d >= 0 && d.d < 4) {
+          const i = S.ids.indexOf(from);
+          if (i > 0 && !S.q[i] && q[i].length < 2) q[i].push(d.d | 0);
+        }
+      } else if (d.k === "s" && Array.isArray(d.a) && d.a.length === P) {
+        S = { ids: d.ids, q: d.q, a: d.a, d: d.d, al: d.al, ap: d.ap, s: d.s, cd: d.cd, w: d.w, r: d.r, rw: d.rw, rt: d.rt, c: d.c, e: d.e };
       }
     });
     const offP = net.onPlayers(conn);
     function snake(i) {
-      const a = S.a[i], col = COL[i], lt = LT[i] || mix(col, 0.3);
+      const a = S.a[i];
+      if (!a || !a.length) return;
+      const col = COL[i], lt = LT[i] || mix(col, 0.3), r1 = CS > 13 ? 6 : 5, r2 = CS > 13 ? 4 : 3.5;
       x.globalAlpha = S.al[i] ? 1 : 0.35;
       for (let k = a.length - 2; k >= 0; k -= 2) {
         const h = k === 0;
         x.fillStyle = h ? lt : k % 4 ? col : lt;
         x.beginPath();
-        x.roundRect(a[k] * CS + 1, a[k + 1] * CS + 1, CS - 2, CS - 2, h ? 6 : 4);
+        x.roundRect(a[k] * CS + 1, a[k + 1] * CS + 1, CS - 2, CS - 2, h ? r1 : r2);
         x.fill();
       }
-      if (a.length) {
-        x.strokeStyle = mix(col, 0.6);
-        x.lineWidth = 1.5;
-        x.beginPath();
-        x.roundRect(a[0] * CS + 1.5, a[1] * CS + 1.5, CS - 3, CS - 3, 5.5);
-        x.stroke();
-      }
+      x.strokeStyle = mix(col, 0.6);
+      x.lineWidth = 1.5;
+      x.beginPath();
+      x.roundRect(a[0] * CS + 1.5, a[1] * CS + 1.5, CS - 3, CS - 3, r1 - 0.5);
+      x.stroke();
       x.globalAlpha = 1;
       if (!S.al[i]) return;
-      const d = S.d[i], hx2 = a[0] * CS + CS / 2, hy = a[1] * CS + CS / 2, ex = DY[d] * 3.5, ey = DX[d] * 3.5, fx2 = DX[d] * 2.5, fy = DY[d] * 2.5;
+      const d = S.d[i], hx2 = a[0] * CS + CS / 2, hy = a[1] * CS + CS / 2, f = CS / 15, ex = DY[d] * 3.5 * f, ey = DX[d] * 3.5 * f, fx2 = DX[d] * 2.5 * f, fy = DY[d] * 2.5 * f;
       x.fillStyle = "#0e1020";
       [[hx2 + ex + fx2, hy - ey + fy], [hx2 - ex + fx2, hy + ey + fy]].forEach(([px, py]) => {
         x.beginPath();
-        x.arc(px, py, 2, 0, 7);
+        x.arc(px, py, 2 * f, 0, 7);
         x.fill();
       });
     }
+    const bg = document.createElement("canvas");
+    bg.width = bg.height = W;
+    {
+      const g = bg.getContext("2d");
+      g.fillStyle = "#0e1020";
+      g.fillRect(0, 0, W, W);
+      g.fillStyle = "#12162e";
+      for (let i = 0; i < N; i++) for (let j = i & 1; j < N; j += 2) g.fillRect(i * CS, j * CS, CS, CS);
+    }
+    const ar = CS > 13 ? 5.5 : 4.8, AS = CS * 2, apl = document.createElement("canvas");
+    apl.width = apl.height = AS;
+    {
+      const g = apl.getContext("2d"), m = AS / 2;
+      g.fillStyle = "#ff4d5a";
+      g.shadowColor = "#ff4d5a";
+      g.shadowBlur = 8;
+      g.beginPath();
+      g.arc(m, m + 1, ar, 0, 7);
+      g.fill();
+      g.shadowBlur = 0;
+      g.fillStyle = "#5ef28a";
+      g.beginPath();
+      g.ellipse(m + 2, m - ar + 0.5, 3, 1.6, -0.6, 0, 7);
+      g.fill();
+    }
     function draw2(dt) {
-      x.fillStyle = "#0e1020";
-      x.fillRect(0, 0, W, W);
-      x.fillStyle = "#12162e";
-      for (let i = 0; i < N; i++) for (let j = i & 1; j < N; j += 2) x.fillRect(i * CS, j * CS, CS, CS);
-      for (let k = 0; k < S.ap.length; k += 2) {
-        const ax = S.ap[k] * CS + CS / 2, ay = S.ap[k + 1] * CS + CS / 2;
-        x.fillStyle = "#ff4d5a";
-        x.shadowColor = "#ff4d5a";
-        x.shadowBlur = 8;
-        x.beginPath();
-        x.arc(ax, ay + 1, 5.5, 0, 7);
-        x.fill();
-        x.shadowBlur = 0;
-        x.fillStyle = "#5ef28a";
-        x.beginPath();
-        x.ellipse(ax + 2, ay - 5, 3, 1.6, -0.6, 0, 7);
-        x.fill();
+      const me = myS();
+      x.drawImage(bg, 0, 0);
+      for (let k = 0; k < S.ap.length; k += 2) x.drawImage(apl, S.ap[k] * CS + CS / 2 - AS / 2, S.ap[k + 1] * CS + CS / 2 - AS / 2);
+      for (let i = 0; i < P; i++) snake(i);
+      if (S.cd > 0 && S.rt <= 0 && me >= 0 && S.a[me] && S.a[me].length) {
+        const a = S.a[me], d = S.d[me];
+        x.font = "bold 11px system-ui,sans-serif";
+        x.textAlign = "center";
+        x.fillStyle = "#fff";
+        x.fillText("jij", a[0] * CS + CS / 2 + DX[d] * CS * 1.4, a[1] * CS + CS / 2 + DY[d] * CS * 1.4 + 4);
       }
-      snake(0);
-      snake(1);
       for (const p of parts) {
         p.x += p.vx * dt;
         p.y += p.vy * dt;
@@ -4028,12 +4239,23 @@ const MP = [
       x.font = "bold 12px system-ui,sans-serif";
       x.shadowColor = "#000";
       x.shadowBlur = 4;
-      x.fillStyle = mix(COL[0], 0.4);
-      x.textAlign = "left";
-      x.fillText(names[0] + " · " + S.a[0].length / 2, 8, W - 8);
-      x.fillStyle = mix(COL[1], 0.4);
-      x.textAlign = "right";
-      x.fillText(S.a[1].length / 2 + " · " + names[1], W - 8, W - 8);
+      const len = (i) => (S.a[i] || []).length / 2;
+      if (P === 2) {
+        x.fillStyle = mix(COL[0], 0.4);
+        x.textAlign = "left";
+        x.fillText(names[0] + " · " + len(0), 8, W - 8);
+        x.fillStyle = mix(COL[1], 0.4);
+        x.textAlign = "right";
+        x.fillText(len(1) + " · " + names[1], W - 8, W - 8);
+      } else {
+        x.textAlign = "center";
+        for (let i = 0; i < P; i++) {
+          x.globalAlpha = S.al[i] ? 1 : 0.45;
+          x.fillStyle = mix(COL[i], 0.4);
+          x.fillText(avs[i] + " " + len(i), W * (i + 0.5) / P, W - 8);
+        }
+        x.globalAlpha = 1;
+      }
       x.shadowBlur = 0;
       x.textAlign = "center";
       x.fillStyle = "#fff";
@@ -4051,8 +4273,8 @@ const MP = [
         x.font = "bold 24px system-ui,sans-serif";
         x.shadowColor = "#000";
         x.shadowBlur = 8;
-        x.fillStyle = S.rw === 2 ? "#fff" : mix(COL[S.rw], 0.45);
-        x.fillText(S.rw === 2 ? "Gelijk! Niemand scoort" : S.rw === me ? "Jij wint de ronde!" : names[S.rw] + " wint de ronde", W / 2, W / 2 - 60);
+        x.fillStyle = S.rw < 0 ? "#fff" : mix(COL[S.rw], 0.45);
+        x.fillText(S.rw < 0 ? "Gelijk! Niemand scoort" : S.rw === me ? "Jij wint de ronde!" : names[S.rw] + " wint de ronde", W / 2, W / 2 - 60);
         x.shadowBlur = 0;
       }
     }
@@ -4062,7 +4284,7 @@ const MP = [
         tick += dt;
         if (tick >= 0.04) {
           tick = Math.min(tick - 0.04, 0.04);
-          net.send({ k: "s", a: S.a, d: S.d, al: S.al, ap: S.ap, s: S.s, cd: Math.round(S.cd * 100) / 100, w: S.w, r: S.r, rw: S.rw, rt: Math.round(S.rt * 100) / 100, c: S.c, e: S.e });
+          net.send({ k: "s", ids: S.ids, q: S.q, a: S.a, d: S.d, al: S.al, ap: S.ap, s: S.s, cd: Math.round(S.cd * 100) / 100, w: S.w, r: S.r, rw: S.rw, rt: Math.round(S.rt * 100) / 100, c: S.c, e: S.e });
         }
       }
       fx();
@@ -4077,6 +4299,7 @@ const MP = [
       inp.stop();
       off();
       offP();
+      clearTimeout(noteT);
       c.onpointerdown = c.onpointerup = null;
       delete window.__dbg;
     };
@@ -7718,6 +7941,1883 @@ const MP = [
       clearInterval(revT);
       clearInterval(rollT);
       if (window.__dbg === dbg) delete window.__dbg;
+    };
+  } },
+  { id: "kleurkaart", n: "Kleurkaart", e: "🌈", c: "Samen", g: "#ff512f,#2f6fed", min: 2, max: 6, run(st, net) {
+    const isH = net.isHost, me = net.me.id, TURN = 3e4, DBG = !!window.SPZ_PEER;
+    const COL = { r: "#e5383b", y: "#f2a900", g: "#21a35a", b: "#2f6fed" }, CN = { r: "rood", y: "geel", g: "groen", b: "blauw" }, CO = "rygbw", VO = "0123456789sr+2w+4";
+    const GL = { s: "⊘", r: "⇄", "+2": "+2", w: "✦", "+4": "+4" }, VN = { s: "Sla over", r: "Draai om", "+2": "+2", w: "Kleurwissel", "+4": "+4 Kleurwissel" };
+    const pinfo = (id) => net.players.find((x) => x.id === id), pn = (id, n) => {
+      const q = pinfo(id);
+      return q ? net.pname(q) : n || "?";
+    }, pcol = (id) => {
+      const q = pinfo(id);
+      return q && q.col || "var(--mu)";
+    };
+    const pts = (c) => /^\d$/.test(c.v) ? +c.v : c.c === "w" ? 50 : 20, cname = (c) => c.c === "w" ? VN[c.v] : CN[c.c] + " " + (VN[c.v] || c.v);
+    const okOn = (c, S2) => S2.pend > 0 ? c.v === "+2" : c.c === "w" || c.c === S2.col || c.v === S2.top.v;
+    function card2(c, w) {
+      const h = Math.round(w * 1.5), d = E("div"), wild = c.c === "w", col = COL[c.c] || "#1b1d2a", g = GL[c.v] || c.v, big = g.length > 1 ? w * 0.36 : w * 0.5;
+      d.style.cssText = `flex:none;position:relative;width:${w}px;height:${h}px;border-radius:${w * 0.16}px;border:${Math.max(2, w * 0.05)}px solid #fff;box-sizing:border-box;box-shadow:0 3px 10px rgba(0,0,0,.28);overflow:hidden;color:#fff;font-weight:900;user-select:none;transition:transform .15s,opacity .15s,box-shadow .15s;background:${wild ? "#1b1d2a" : `linear-gradient(150deg,${col},color-mix(in srgb,${col} 70%,#000))`}`;
+      const ring = E("div");
+      ring.style.cssText = `position:absolute;left:50%;top:50%;width:${w * 0.74}px;height:${w * 0.74}px;transform:translate(-50%,-50%);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:${big}px;text-shadow:0 2px 0 rgba(0,0,0,.35);` + (wild ? "background:conic-gradient(#e5383b 0 25%,#f2a900 0 50%,#21a35a 0 75%,#2f6fed 0);box-shadow:inset 0 0 0 3px #fff" : "background:rgba(255,255,255,.18);box-shadow:inset 0 0 0 2px rgba(255,255,255,.55)");
+      ring.textContent = g;
+      if (g === "6" || g === "9") ring.style.textDecoration = "underline";
+      const k1 = E("div"), k2 = E("div");
+      [k1, k2].forEach((k) => {
+        k.textContent = g;
+        k.style.cssText = `position:absolute;font-size:${w * 0.2}px;line-height:1`;
+      });
+      k1.style.left = k1.style.top = w * 0.07 + "px";
+      k2.style.right = k2.style.bottom = w * 0.07 + "px";
+      k2.style.transform = "rotate(180deg)";
+      d.append(ring, k1, k2);
+      return d;
+    }
+    function back(w, n) {
+      const d = E("div");
+      d.style.cssText = `flex:none;position:relative;width:${w}px;height:${w * 1.5}px;border-radius:${w * 0.16}px;border:3px solid #fff;box-sizing:border-box;box-shadow:0 3px 10px rgba(0,0,0,.28),4px 4px 0 -1px var(--ln),7px 7px 0 -2px var(--ln);background:repeating-linear-gradient(45deg,#24264a 0 6px,#2d3060 6px 12px);display:flex;align-items:center;justify-content:center`;
+      const r = E("div");
+      r.style.cssText = `width:${w * 0.6}px;height:${w * 0.6}px;border-radius:50%;background:conic-gradient(#e5383b 0 25%,#f2a900 0 50%,#21a35a 0 75%,#2f6fed 0);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:${w * 0.22}px;box-shadow:0 0 0 3px #fff`;
+      r.textContent = n;
+      d.append(r);
+      return d;
+    }
+    const sc = E("div", "sc"), seats = E("div"), table = E("div"), who = E("div"), acts = E("div"), fan = E("div"), info = E("div", "hint"), opts = E("div"), rend = E("div"), pick = E("div");
+    seats.style.cssText = "display:flex;gap:8px 4px;flex-wrap:wrap;justify-content:center;margin:6px 0 10px";
+    table.style.cssText = "display:flex;align-items:center;justify-content:center;gap:16px;padding:10px;border-radius:22px;max-width:380px;margin:0 auto;background:color-mix(in srgb,var(--ac) 7%,var(--bg));border:3px solid var(--ln);transition:border-color .3s";
+    who.style.cssText = "font-weight:800;font-size:16px;min-height:24px;margin:8px 0 2px";
+    acts.style.cssText = "display:flex;gap:8px;justify-content:center;flex-wrap:wrap;min-height:46px;margin:4px 0";
+    fan.style.cssText = "display:flex;overflow-x:auto;padding:22px 10px 12px;margin:0 -8px;scrollbar-width:thin;-webkit-overflow-scrolling:touch;min-height:130px";
+    opts.style.cssText = "max-width:380px;margin:8px auto;padding:14px;border-radius:16px;background:var(--bg);border:1px solid var(--ln)";
+    rend.style.cssText = "max-width:380px;margin:10px auto;padding:12px;border-radius:16px;background:var(--bg);border:1px solid var(--ln);display:none";
+    pick.style.cssText = "display:none;position:absolute;inset:0;z-index:15;background:rgba(14,16,32,.6);border-radius:20px;align-items:center;justify-content:center";
+    st.append(sc, seats, opts, table, who, acts, rend, fan, info, E("div", "hint", "Speel dezelfde kleur, hetzelfde getal of symbool · tik een kaart · ←/→ kies · Enter speel · D pak/pas · L laatste kaart"), pick);
+    let S = null, myH = { h: [], dr: -1 }, sel = 0, lEnd = 0, lastKey = "", podDone = 0, pickId = -1, tKey = "", known = {};
+    net.players.forEach((p) => known[p.id] = 1);
+    const cur2 = () => S && S.ph === "play" && S.pl[S.t], myTurn = () => {
+      const c = cur2();
+      return !!c && c.id === me;
+    }, meP = () => S && S.pl.find((p) => p.id === me);
+    const sorted = () => myH.h.slice().sort((a, b) => CO.indexOf(a.c) - CO.indexOf(b.c) || VO.indexOf(a.v) - VO.indexOf(b.v) || a.i - b.i);
+    const playable = (c) => myTurn() && (!S.drew || c.i === myH.dr) && okOn(c, S);
+    function seat(p) {
+      const q = pinfo(p.id), col = pcol(p.id), on = cur2() && cur2().id === p.id, d = E("div");
+      d.title = pn(p.id, p.n);
+      d.style.cssText = "display:flex;flex-direction:column;align-items:center;width:64px;gap:3px;transition:transform .2s" + (on ? ";transform:translateY(-3px)" : "");
+      const a = E("div", "pav");
+      a.style.cssText = "--c:" + col + ";position:relative;transition:box-shadow .2s" + (on ? `;box-shadow:0 0 0 3px var(--card),0 0 0 6px ${col},0 0 18px ${col}` : "");
+      a.textContent = q && q.av || "🙂";
+      const b = E("span");
+      b.textContent = p.c;
+      b.style.cssText = `position:absolute;right:-9px;bottom:-6px;min-width:24px;height:24px;border-radius:7px;background:${col};color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid var(--card);box-sizing:border-box;padding:0 4px`;
+      a.append(b);
+      if (p.uno && p.c === 1 || S.vuln && S.vuln.id === p.id) {
+        const u = E("span");
+        u.textContent = p.uno ? "1!" : "?!";
+        u.style.cssText = "position:absolute;left:-8px;top:-6px;background:" + (p.uno ? "#f2a900" : "#e5383b") + ";color:#fff;font-size:11px;font-weight:900;border-radius:8px;padding:1px 5px";
+        a.append(u);
+      }
+      const nm = E("div");
+      nm.textContent = p.id === me ? "Jij" : q ? q.name : p.n;
+      nm.style.cssText = "font-size:12px;font-weight:700;max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:" + (on ? col : "var(--tx)");
+      const s2 = E("div");
+      s2.textContent = p.sc + " pt";
+      s2.style.cssText = "font-size:11px;color:var(--mu)";
+      d.append(a, nm, s2);
+      return d;
+    }
+    function btn(t, f, bg) {
+      const b = E("button", "btn", t);
+      b.style.cssText = "min-height:46px;font-size:16px" + (bg ? ";background:" + bg : "");
+      b.onclick = f;
+      return b;
+    }
+    function render() {
+      if (!S) return;
+      const m = meP();
+      if (S.ph === "play") {
+        const k = S.rnd + "|" + S.turn;
+        if (k !== tKey) {
+          tKey = k;
+          lEnd = performance.now() + S.left;
+        }
+      }
+      sc.textContent = S.ph === "setup" ? "Kleurkaart · instellingen" : S.ph === "fin" ? "Spel klaar!" : "Ronde " + (S.rnd + 1) + " · " + (S.opt.goal ? "doel " + S.opt.goal + " pt" : "één ronde") + (S.opt.stack ? " · +2 stapelen" : "") + (m ? " · jij: " + m.sc + " pt" : "");
+      info.textContent = (S.log || []).slice(-3).join(" · ");
+      info.style.display = S.log && S.log.length ? "" : "none";
+      seats.replaceChildren(...(S.pl.length ? S.pl : net.players.map((p) => ({ id: p.id, n: p.name, c: 0, sc: 0 }))).map(seat));
+      renderOpts();
+      table.style.display = fan.style.display = S.ph === "play" || S.ph === "rend" ? "flex" : "none";
+      if (S.top) {
+        table.replaceChildren();
+        const dk = back(56, S.dk);
+        dk.style.cursor = myTurn() && !S.drew ? "pointer" : "default";
+        dk.onclick = () => act({ k: "draw" });
+        dk.title = "Pak een kaart";
+        const tp = card2(S.top, 72);
+        tp.style.transform = "rotate(-4deg)";
+        const inf = E("div");
+        inf.style.cssText = "display:flex;flex-direction:column;gap:6px;align-items:center;font-weight:800;font-size:13px;min-width:62px";
+        const cd = E("div");
+        cd.style.cssText = `width:34px;height:34px;border-radius:50%;background:${COL[S.col]};box-shadow:0 0 0 3px var(--card),0 0 0 5px ${COL[S.col]}`;
+        const cl = E("div");
+        cl.textContent = CN[S.col];
+        const dr = E("div");
+        dr.textContent = S.dir > 0 ? "↻ rechtsom" : "↺ linksom";
+        dr.style.color = "var(--mu)";
+        inf.append(cd, cl, dr);
+        if (S.pend) {
+          const pe = E("div");
+          pe.textContent = "+" + S.pend + " te pakken";
+          pe.style.cssText = "background:#e5383b;color:#fff;border-radius:8px;padding:2px 6px";
+          inf.append(pe);
+        }
+        table.append(dk, tp, inf);
+        table.style.borderColor = COL[S.col];
+      }
+      const c = cur2();
+      who.textContent = S.ph === "setup" ? isH ? "Kies de regels en start" : "⏳ De host kiest de regels…" : S.ph === "play" ? myTurn() ? S.pend ? "Jij bent aan zet: stapel een +2 of pak " + S.pend : S.drew ? "Speel de gepakte kaart of pas" : "Jij bent aan zet" : c ? pn(c.id, c.n) + " is aan zet" : "" : S.ph === "rend" ? "🏆 " + pn(S.rw.id) + " wint de ronde!" : S.ph === "fin" ? "🏆 " + pn(S.win) + " wint!" : "";
+      who.dataset.base = who.textContent;
+      who.style.color = "var(--tx)";
+      acts.replaceChildren();
+      if (S.ph === "play" && m) {
+        if (myTurn()) acts.append(S.drew ? btn("Pas ▶", () => act({ k: "pass" })) : btn(S.pend ? "Pak " + S.pend + " kaarten" : "Pak een kaart", () => act({ k: "draw" })));
+        const n = myH.h.length;
+        if (!m.uno && (n === 2 && myTurn() || n === 1 && S.vuln && S.vuln.id === me)) acts.append(btn("Laatste kaart! ☝️", () => act({ k: "last" }), "linear-gradient(135deg,#f2a900,#f77f00)"));
+        if (S.vuln && S.vuln.id !== me && S.pl.some((p) => p.id === S.vuln.id)) acts.append(btn("Betrapt! 🫵 " + pn(S.vuln.id), () => act({ k: "catch" }), "linear-gradient(135deg,#e5383b,#b5179e)"));
+      }
+      renderFan();
+      renderRend();
+      if (S.ph !== "play" || !myTurn()) closePick();
+      if (S.ph === "fin" && !podDone) {
+        podDone = 1;
+        st.style.minHeight = 320 + 60 * S.pl.length + "px";
+        const scores = {};
+        S.pl.forEach((p) => scores[p.id] = p.sc);
+        net.result({ winner: S.win, scores, unit: " pt", text: S.rw ? pn(S.rw.id) + " pakte " + S.rw.pts + " pt in de laatste ronde" : "" });
+      }
+    }
+    function renderFan() {
+      fan.replaceChildren();
+      if (S.ph === "setup") return;
+      const m = meP();
+      if (!m) {
+        const t = E("div", "hint");
+        t.textContent = "Je kijkt mee 👀";
+        t.style.cssText = "margin:auto;font-size:15px";
+        fan.append(t);
+        return;
+      }
+      const H = sorted();
+      if (sel >= H.length) sel = Math.max(0, H.length - 1);
+      const key = S.rnd + "|" + S.turn + "|" + H.map((c) => c.i).join(",");
+      if (key !== lastKey && myTurn()) {
+        lastKey = key;
+        const f = H.findIndex(playable);
+        if (f >= 0) sel = f;
+      }
+      H.forEach((c, k) => {
+        const ok = playable(c), d = card2(c, 66);
+        d.dataset.i = c.i;
+        d.dataset.ok = ok ? 1 : 0;
+        d.style.marginLeft = k ? "-16px" : "auto";
+        if (k === H.length - 1) d.style.marginRight = "auto";
+        d.style.cursor = ok ? "pointer" : "default";
+        if (myTurn()) {
+          if (ok) d.style.transform = "translateY(-16px)";
+          else d.style.filter = "saturate(.3) brightness(.78)";
+        }
+        if (k === sel && myTurn()) d.style.boxShadow = "0 0 0 3px var(--ac),0 6px 14px rgba(0,0,0,.35)";
+        d.onclick = () => {
+          sel = k;
+          tryPlay(c);
+        };
+        fan.append(d);
+      });
+      const sd = fan.children[sel];
+      if (sd && myTurn()) {
+        const l = sd.offsetLeft - fan.offsetLeft;
+        if (l < fan.scrollLeft) fan.scrollLeft = l - 10;
+        else if (l + 66 > fan.scrollLeft + fan.clientWidth) fan.scrollLeft = l + 76 - fan.clientWidth;
+      }
+    }
+    function renderOpts() {
+      opts.style.display = S.ph === "setup" ? "" : "none";
+      if (S.ph !== "setup") return;
+      opts.replaceChildren();
+      const o = S.opt, row = (lab, el) => {
+        const r = E("div");
+        r.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0;font-weight:700;flex-wrap:wrap";
+        const l = E("span");
+        l.textContent = lab;
+        r.append(l, el);
+        return r;
+      };
+      const seg = (vals, curV, lab, f) => {
+        const w = E("div");
+        w.style.cssText = "display:flex;gap:4px";
+        vals.forEach((v) => {
+          const b = E("button", "btn" + (v === curV ? "" : " sec"), lab(v));
+          b.style.cssText = "padding:8px 12px;font-size:14px";
+          b.disabled = !isH;
+          b.onclick = () => f(v);
+          w.append(b);
+        });
+        return w;
+      };
+      opts.append(row("+2 op +2 stapelen", seg([1, 0], o.stack, (v) => v ? "Aan" : "Uit", (v) => {
+        o.stack = v;
+        pub();
+      })), row("Spel tot", seg([0, 100, 300, 500], o.goal, (v) => v ? v + "" : "1 ronde", (v) => {
+        o.goal = v;
+        pub();
+      })));
+      if (isH) {
+        const b = btn("Delen en starten ▶", () => {
+          if (S.ph === "setup") {
+            S.pl = net.players.map((p) => ({ id: p.id, n: p.name, c: 0, sc: 0, uno: 0 }));
+            newRound();
+          }
+        });
+        b.style.marginTop = "8px";
+        opts.append(b);
+      } else opts.append(E("div", "hint", "De host kiest de regels en start het spel"));
+    }
+    function renderRend() {
+      rend.style.display = S.ph === "rend" ? "" : "none";
+      if (S.ph !== "rend") return;
+      rend.replaceChildren();
+      const h = E("div");
+      h.style.cssText = "font-weight:800;margin-bottom:6px";
+      h.textContent = "+" + S.rw.pts + " pt voor " + pn(S.rw.id) + " · doel " + S.opt.goal;
+      rend.append(h);
+      S.pl.slice().sort((a, b) => b.sc - a.sc).forEach((p) => {
+        const r = E("div");
+        r.style.cssText = "display:flex;justify-content:space-between;padding:3px 8px;border-left:4px solid " + pcol(p.id) + ";margin:3px 0";
+        const a = E("span"), b = E("b");
+        a.textContent = pn(p.id, p.n);
+        b.textContent = p.sc + " pt";
+        r.append(a, b);
+        rend.append(r);
+      });
+      if (isH) rend.append(btn("Volgende ronde ▶", () => {
+        if (S.ph === "rend") newRound();
+      }));
+      else rend.append(E("div", "hint", "De volgende ronde begint zo…"));
+    }
+    function tryPlay(c) {
+      if (!playable(c)) {
+        beep(160, 0.05, "triangle", 0.02);
+        return;
+      }
+      if (c.c === "w") openPick(c.i);
+      else act({ k: "play", i: c.i });
+    }
+    function openPick(i) {
+      pickId = i;
+      pick.replaceChildren();
+      const b = E("div");
+      b.style.cssText = "background:var(--card);border-radius:18px;padding:16px;width:260px;box-shadow:0 10px 30px rgba(0,0,0,.4)";
+      const h = E("div");
+      h.textContent = "Kies een kleur";
+      h.style.cssText = "font-weight:800;margin-bottom:10px";
+      const g = E("div");
+      g.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px";
+      "rygb".split("").forEach((k, n) => {
+        const x = E("button");
+        x.dataset.col = k;
+        x.textContent = n + 1 + " · " + CN[k];
+        x.style.cssText = `min-height:64px;border:0;border-radius:14px;background:${COL[k]};color:#fff;font-weight:800;font-size:16px;cursor:pointer`;
+        x.onclick = () => {
+          act({ k: "play", i: pickId, col: k });
+          closePick();
+        };
+        g.append(x);
+      });
+      const cx = E("button", "btn sec", "Annuleer");
+      cx.style.marginTop = "10px";
+      cx.onclick = closePick;
+      b.append(h, g, cx);
+      pick.append(b);
+      pick.style.display = "flex";
+    }
+    function closePick() {
+      pickId = -1;
+      pick.style.display = "none";
+    }
+    function act(d) {
+      if (isH) hAct(me, d);
+      else net.send(d);
+    }
+    let deck = [], disc = [], HD = {}, DR = {}, tm = 0, tT = 0, tR = 0;
+    const shuf = (a) => {
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = R(i + 1);
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    };
+    function mkDeck() {
+      const d = [];
+      for (const c of "rygb") {
+        d.push({ c, v: "0" });
+        for (const v of ["1", "2", "3", "4", "5", "6", "7", "8", "9", "s", "r", "+2"]) d.push({ c, v }, { c, v });
+      }
+      for (let k = 0; k < 4; k++) d.push({ c: "w", v: "w" }, { c: "w", v: "+4" });
+      shuf(d);
+      d.forEach((c, k) => c.i = k);
+      return d;
+    }
+    const P = (id) => S.pl.find((p) => p.id === id), nx = (i, k) => ((i + S.dir * k) % S.pl.length + S.pl.length) % S.pl.length;
+    const log = (t) => {
+      S.log = (S.log || []).concat(t).slice(-3);
+    };
+    function draw2(id, n) {
+      const got = [];
+      for (let k = 0; k < n; k++) {
+        if (!deck.length && disc.length > 1) {
+          const top = disc.pop();
+          deck = shuf(disc);
+          disc = [top];
+          log("🔀 Aflegstapel geschud");
+        }
+        if (!deck.length) break;
+        const c = deck.pop();
+        HD[id].push(c);
+        got.push(c);
+      }
+      const p = P(id);
+      if (p) p.uno = 0;
+      return got;
+    }
+    function pub() {
+      var _a;
+      S.seq = (S.seq || 0) + 1;
+      S.pl.forEach((p) => p.c = (HD[p.id] || []).length);
+      S.dk = deck.length;
+      S.left = S.ph === "play" ? Math.max(0, TURN - (Date.now() - tT)) : 0;
+      net.send(S);
+      S.pl.forEach((p) => {
+        var _a2;
+        if (p.id !== me) net.sendTo(p.id, { k: "h", rnd: S.rnd, h: HD[p.id] || [], dr: (_a2 = DR[p.id]) != null ? _a2 : -1 });
+      });
+      myH = { h: (HD[me] || []).slice(), dr: (_a = DR[me]) != null ? _a : -1 };
+      render();
+    }
+    function adv(k) {
+      S.t = nx(S.t, k);
+      S.turn++;
+      S.drew = 0;
+      DR = {};
+      tT = Date.now();
+      if (S.vuln && S.turn > S.vuln.n + 1) S.vuln = null;
+    }
+    function hAct(id, d, auto2) {
+      if (!S || !d) return;
+      const p = P(id);
+      if (!p || S.ph !== "play") return;
+      const h = HD[id], isCur = S.pl[S.t].id === id;
+      if (d.k === "last") {
+        if (h.length <= 2 && !p.uno) {
+          p.uno = 1;
+          if (S.vuln && S.vuln.id === id) S.vuln = null;
+          log("☝️ " + pn(id) + ": laatste kaart!");
+          beep(700, 0.08, "triangle", 0.04);
+          pub();
+        }
+        return;
+      }
+      if (d.k === "catch") {
+        const v = S.vuln;
+        if (v && v.id !== id && HD[v.id] && HD[v.id].length === 1) {
+          draw2(v.id, 2);
+          S.vuln = null;
+          log("🫵 " + pn(id) + " betrapt " + pn(v.id) + ": +2");
+          beep(220, 0.15, "sawtooth", 0.03);
+          pub();
+        }
+        return;
+      }
+      if (!isCur) return;
+      if (d.k === "draw") {
+        if (S.drew) return;
+        if (S.pend) {
+          draw2(id, S.pend);
+          log((auto2 ? "⏱ " : "") + pn(id) + " pakt " + S.pend);
+          S.pend = 0;
+          adv(1);
+        } else {
+          const g = draw2(id, 1)[0];
+          if (g && okOn(g, S) && !auto2) {
+            S.drew = 1;
+            DR[id] = g.i;
+          } else {
+            log((auto2 ? "⏱ " : "") + pn(id) + " pakt een kaart");
+            adv(1);
+          }
+        }
+        beep(330, 0.04, "triangle", 0.03);
+        pub();
+        return;
+      }
+      if (d.k === "pass") {
+        if (S.drew) {
+          log(pn(id) + " pakt en past");
+          adv(1);
+          pub();
+        }
+        return;
+      }
+      if (d.k !== "play") return;
+      const ci = h.findIndex((c2) => c2.i === d.i), c = h[ci];
+      if (!c || !okOn(c, S) || S.drew && c.i !== DR[id] || c.c === "w" && !COL[d.col]) return;
+      h.splice(ci, 1);
+      disc.push(c);
+      S.top = { c: c.c, v: c.v, i: c.i };
+      S.col = c.c === "w" ? d.col : c.c;
+      log(pn(id) + " speelt " + cname(c) + (c.c === "w" ? " → " + CN[S.col] : ""));
+      beep(520, 0.05, "triangle", 0.03);
+      if (!h.length) {
+        endRound(id);
+        return;
+      }
+      const n = S.pl.length;
+      if (c.v === "s") adv(2);
+      else if (c.v === "r") {
+        if (n === 2) adv(2);
+        else {
+          S.dir *= -1;
+          adv(1);
+        }
+      } else if (c.v === "+2") {
+        if (S.opt.stack) {
+          S.pend += 2;
+          adv(1);
+        } else {
+          draw2(S.pl[nx(S.t, 1)].id, 2);
+          adv(2);
+        }
+      } else if (c.v === "+4") {
+        draw2(S.pl[nx(S.t, 1)].id, 4);
+        adv(2);
+      } else adv(1);
+      if (h.length === 1 && !p.uno) S.vuln = { id, n: S.turn - 1 };
+      pub();
+    }
+    function endRound(id) {
+      let s = 0;
+      S.pl.forEach((p2) => {
+        if (p2.id !== id) s += (HD[p2.id] || []).reduce((a, c) => a + pts(c), 0);
+      });
+      const p = P(id);
+      p.sc += s;
+      S.rw = { id, pts: s };
+      S.pend = 0;
+      S.vuln = null;
+      S.drew = 0;
+      if (!S.opt.goal || p.sc >= S.opt.goal) {
+        S.ph = "fin";
+        S.win = id;
+        [0, 1, 2].forEach((i) => setTimeout(() => beep(523 * Math.pow(1.26, i), 0.12, "triangle", 0.05), i * 120));
+      } else {
+        S.ph = "rend";
+        tR = Date.now();
+      }
+      pub();
+    }
+    function newRound() {
+      deck = mkDeck();
+      disc = [];
+      HD = {};
+      DR = {};
+      S.pl.forEach((p) => {
+        HD[p.id] = [];
+        p.uno = 0;
+      });
+      S.pl.forEach((p) => draw2(p.id, 7));
+      let k = deck.length - 1;
+      while (!/^\d$/.test(deck[k].v)) k--;
+      const t = deck.splice(k, 1)[0];
+      disc.push(t);
+      S.rnd++;
+      S.top = { c: t.c, v: t.v, i: t.i };
+      S.col = t.c;
+      S.t = S.rnd % S.pl.length;
+      S.dir = 1;
+      S.pend = 0;
+      S.vuln = null;
+      S.drew = 0;
+      S.turn = 0;
+      S.rw = null;
+      S.ph = "play";
+      S.log = [];
+      tT = Date.now();
+      pub();
+    }
+    function auto() {
+      const p = S.pl[S.t];
+      if (!p) return;
+      if (S.drew) hAct(p.id, { k: "pass" });
+      else hAct(p.id, { k: "draw" }, 1);
+    }
+    function tick() {
+      if (!S) return;
+      if (S.ph === "play" && Date.now() - tT >= TURN) auto();
+      else if (S.ph === "rend" && Date.now() - tR >= 1e4) newRound();
+    }
+    const off = net.on((d, from) => {
+      var _a;
+      if (!d || typeof d !== "object") return;
+      if (isH) {
+        if (d.k === "hi" && S) {
+          net.sendTo(from, S);
+          if (HD[from]) net.sendTo(from, { k: "h", rnd: S.rnd, h: HD[from], dr: (_a = DR[from]) != null ? _a : -1 });
+        } else hAct(from, d);
+      } else if (d.k === "s") {
+        S = d;
+        render();
+      } else if (d.k === "h" && Array.isArray(d.h)) {
+        myH = { h: d.h, dr: d.dr };
+        if (S) render();
+      }
+    });
+    const offP = net.onPlayers((ps) => {
+      const ids = new Set(ps.map((p) => p.id));
+      Object.keys(known).forEach((id) => {
+        if (ids.has(id)) return;
+        delete known[id];
+        if (!isH || !S) return;
+        const i = S.pl.findIndex((p) => p.id === id);
+        log("⚠️ " + (i >= 0 ? S.pl[i].n : "Iemand") + " heeft het spel verlaten");
+        if (i < 0) return;
+        const wasCur = i === S.t;
+        deck.unshift(...HD[id] || []);
+        delete HD[id];
+        S.pl.splice(i, 1);
+        if (S.vuln && S.vuln.id === id) S.vuln = null;
+        const n = S.pl.length;
+        if (i < S.t) S.t--;
+        if (wasCur) {
+          S.t = S.dir > 0 ? i % n : (i - 1 + n) % n;
+          S.drew = 0;
+          DR = {};
+          tT = Date.now();
+        }
+        if (S.t >= n) S.t = 0;
+        if (n === 1 && S.ph !== "setup") {
+          S.ph = "fin";
+          S.win = S.pl[0].id;
+          S.rw = null;
+        }
+      });
+      ps.forEach((p) => {
+        if (!known[p.id]) {
+          known[p.id] = 1;
+          if (isH && S) log("👋 " + net.pname(p) + " kijkt mee");
+        }
+      });
+      if (isH && S) pub();
+      else render();
+    });
+    const inp = input(st, [], (k) => {
+      if (!S || S.ph !== "play") return;
+      if (pickId >= 0) {
+        const n = "1234".indexOf(k);
+        if (n >= 0) {
+          act({ k: "play", i: pickId, col: "rygb"[n] });
+          closePick();
+        } else if (k === "Escape") closePick();
+        return;
+      }
+      const H = sorted();
+      if (k === "ArrowLeft" || k === "ArrowRight") {
+        if (!H.length) return;
+        sel = (sel + (k === "ArrowRight" ? 1 : -1) + H.length) % H.length;
+        renderFan();
+      } else if (k === "Enter") {
+        if (H[sel]) tryPlay(H[sel]);
+      } else if (k === "d" || k === "D") {
+        if (myTurn()) act({ k: S.drew ? "pass" : "draw" });
+      } else if (k === "l" || k === "L") act({ k: "last" });
+    });
+    const stopLoop = loop(() => {
+      if (!S || S.ph !== "play") return;
+      const s = Math.max(0, Math.ceil((lEnd - performance.now()) / 1e3)), t = (who.dataset.base || "") + " · ⏱ " + s + " s";
+      if (who.textContent !== t) who.textContent = t;
+      who.style.color = s <= 5 ? "#e5383b" : "var(--tx)";
+    });
+    let dbg = null;
+    if (DBG) {
+      dbg = window.__dbg = {
+        get S() {
+          return S;
+        },
+        get H() {
+          return isH ? HD : null;
+        },
+        get my() {
+          return myH;
+        },
+        get deck() {
+          return isH ? deck : null;
+        },
+        okOn,
+        rig(id, cards) {
+          HD[id] = cards;
+          pub();
+        },
+        top(c, col) {
+          S.top = c;
+          S.col = col || c.c;
+          pub();
+        },
+        force: () => {
+          if (isH && S && S.ph === "play") auto();
+        },
+        next: () => {
+          if (isH && S.ph === "rend") newRound();
+        }
+      };
+    }
+    if (isH) {
+      S = { k: "s", ph: "setup", rnd: -1, t: 0, dir: 1, pend: 0, top: null, col: "r", pl: [], opt: { stack: 1, goal: 300 }, log: [], turn: 0, dk: 0 };
+      tm = setInterval(tick, 200);
+      pub();
+    } else {
+      net.send({ k: "hi" });
+      sc.textContent = "Wachten op de host…";
+    }
+    return () => {
+      st.style.minHeight = "";
+      off();
+      offP();
+      inp.stop();
+      stopLoop();
+      clearInterval(tm);
+      if (dbg && window.__dbg === dbg) delete window.__dbg;
+    };
+  } },
+  { id: "pesten", n: "Pesten", e: "🃏", c: "Samen", g: "#134e5e,#71b280", min: 2, max: 6, run(st, net) {
+    const isH = net.isHost, me = net.me.id, TURN = 3e4, DBG = !!window.SPZ_PEER;
+    const SU = { s: "♠", h: "♥", d: "♦", c: "♣" }, SN = { s: "schoppen", h: "harten", d: "ruiten", c: "klaveren" }, RED = { h: 1, d: 1 }, SO = "shdcj", RO = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "B", "V", "H", "A", "★"];
+    const LB = { "2": "+2", "7": "blijft", "8": "⏭ over", H: "nog 1×", A: "⇄ om", B: "kleur", "★": "+5" }, RN = { B: "boer", V: "vrouw", H: "heer", A: "aas", "★": "joker" };
+    const pinfo = (id) => net.players.find((x) => x.id === id), pn = (id, n) => {
+      const q = pinfo(id);
+      return q ? net.pname(q) : n || "?";
+    }, pcol = (id) => {
+      const q = pinfo(id);
+      return q && q.col || "var(--mu)";
+    };
+    const spec = (c) => !!LB[c.r], cname = (c) => c.s === "j" ? "joker" : SN[c.s] + " " + (RN[c.r] || c.r);
+    const okOn = (c, S2, last) => {
+      if (last && spec(c)) return false;
+      if (S2.pend > 0) return c.r === "2" || c.s === "j";
+      return c.s === "j" || c.r === "B" || S2.top.s === "j" || c.s === S2.col || c.r === S2.top.r;
+    };
+    function card2(c, w) {
+      const h = Math.round(w * 1.5), d = E("div"), jk = c.s === "j", ink = jk ? "#7b2cbf" : RED[c.s] ? "#d62828" : "#1b1d2a";
+      d.style.cssText = `flex:none;position:relative;width:${w}px;height:${h}px;border-radius:${w * 0.13}px;background:#fff;border:1px solid #c9ccd6;box-sizing:border-box;box-shadow:0 3px 10px rgba(0,0,0,.25);color:${ink};font-weight:800;user-select:none;overflow:hidden;transition:transform .15s,box-shadow .15s,filter .15s;font-family:Georgia,'Times New Roman',serif`;
+      const k = E("div");
+      k.style.cssText = `position:absolute;left:${w * 0.08}px;top:${w * 0.06}px;line-height:1;font-size:${w * 0.24}px;text-align:center;white-space:pre`;
+      k.textContent = jk ? "★" : c.r + "\n" + SU[c.s];
+      const mid = E("div");
+      mid.style.cssText = `position:absolute;left:0;right:0;top:${h * (/[BVH]/.test(c.r) ? 0.4 : 0.3)}px;text-align:center;line-height:1;font-size:${w * (jk ? 0.5 : /[BVH]/.test(c.r) ? 0.36 : 0.5)}px`;
+      mid.textContent = jk ? "🃏" : /[BVH]/.test(c.r) ? c.r + SU[c.s] : SU[c.s];
+      d.append(k, mid);
+      if (LB[c.r]) {
+        const l = E("div");
+        l.textContent = LB[c.r];
+        l.style.cssText = `position:absolute;left:${w * 0.05}px;right:${w * 0.3}px;white-space:nowrap;overflow:hidden;bottom:${w * 0.07}px;border-radius:6px;background:${ink};color:#fff;font:800 ${Math.max(9, w * 0.15)}px system-ui,sans-serif;text-align:center;padding:2px 0`;
+        d.append(l);
+      }
+      return d;
+    }
+    function back(w, n) {
+      const d = E("div");
+      d.style.cssText = `flex:none;position:relative;width:${w}px;height:${w * 1.5}px;border-radius:${w * 0.13}px;border:3px solid #fff;box-sizing:border-box;box-shadow:0 3px 10px rgba(0,0,0,.25),4px 4px 0 -1px var(--ln),7px 7px 0 -2px var(--ln);background:repeating-linear-gradient(45deg,#1d6b4f 0 5px,#16573f 5px 10px);display:flex;align-items:center;justify-content:center`;
+      const r = E("div");
+      r.style.cssText = `min-width:${w * 0.5}px;padding:4px;border-radius:10px;background:#fff;color:#16573f;font-weight:900;font-size:${w * 0.24}px`;
+      r.textContent = n;
+      d.append(r);
+      return d;
+    }
+    const sc = E("div", "sc"), seats = E("div"), table = E("div"), who = E("div"), acts = E("div"), fan = E("div"), info = E("div", "hint"), opts = E("div"), rend = E("div"), pick = E("div");
+    seats.style.cssText = "display:flex;gap:8px 4px;flex-wrap:wrap;justify-content:center;margin:6px 0 10px";
+    table.style.cssText = "display:flex;align-items:center;justify-content:center;gap:16px;padding:10px;border-radius:22px;max-width:380px;margin:0 auto;background:color-mix(in srgb,#21a35a 12%,var(--bg));border:3px solid color-mix(in srgb,#21a35a 45%,var(--ln))";
+    who.style.cssText = "font-weight:800;font-size:16px;min-height:24px;margin:8px 0 2px";
+    acts.style.cssText = "display:flex;gap:8px;justify-content:center;flex-wrap:wrap;min-height:46px;margin:4px 0";
+    fan.style.cssText = "display:flex;overflow-x:auto;padding:22px 10px 12px;margin:0 -8px;scrollbar-width:thin;-webkit-overflow-scrolling:touch;min-height:130px";
+    opts.style.cssText = "max-width:380px;margin:8px auto;padding:14px;border-radius:16px;background:var(--bg);border:1px solid var(--ln)";
+    rend.style.cssText = "max-width:380px;margin:10px auto;padding:12px;border-radius:16px;background:var(--bg);border:1px solid var(--ln);display:none";
+    pick.style.cssText = "display:none;position:absolute;inset:0;z-index:15;background:rgba(14,16,32,.6);border-radius:20px;align-items:center;justify-content:center";
+    st.append(sc, seats, opts, table, who, acts, rend, fan, info, E("div", "hint", "Zelfde kleur of waarde · 2 = pak 2 · joker = pak 5 · 7 blijft · 8 slaat over · heer nog eens · aas draait om · boer kiest kleur · niet eindigen op een pestkaart · ←/→ Enter D L"), pick);
+    let S = null, myH = { h: [], dr: -1 }, sel = 0, lEnd = 0, tKey = "", lastKey = "", podDone = 0, pickId = -1, known = {};
+    net.players.forEach((p) => known[p.id] = 1);
+    const cur2 = () => S && S.ph === "play" && S.pl[S.t], myTurn = () => {
+      const c = cur2();
+      return !!c && c.id === me;
+    }, meP = () => S && S.pl.find((p) => p.id === me);
+    const sorted = () => myH.h.slice().sort((a, b) => SO.indexOf(a.s) - SO.indexOf(b.s) || RO.indexOf(a.r) - RO.indexOf(b.r) || a.i - b.i);
+    const playable = (c) => myTurn() && (!S.drew || c.i === myH.dr) && okOn(c, S, myH.h.length === 1);
+    const need = () => S.opt.best === 3 ? 2 : 1;
+    function seat(p) {
+      const q = pinfo(p.id), col = pcol(p.id), on = cur2() && cur2().id === p.id, d = E("div");
+      d.title = pn(p.id, p.n);
+      d.style.cssText = "display:flex;flex-direction:column;align-items:center;width:64px;gap:3px;transition:transform .2s" + (on ? ";transform:translateY(-3px)" : "");
+      const a = E("div", "pav");
+      a.style.cssText = "--c:" + col + ";position:relative;transition:box-shadow .2s" + (on ? `;box-shadow:0 0 0 3px var(--card),0 0 0 6px ${col},0 0 18px ${col}` : "");
+      a.textContent = q && q.av || "🙂";
+      const b = E("span");
+      b.textContent = p.c;
+      b.style.cssText = `position:absolute;right:-9px;bottom:-6px;min-width:24px;height:24px;border-radius:7px;background:${col};color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid var(--card);box-sizing:border-box;padding:0 4px`;
+      a.append(b);
+      if (p.uno && p.c === 1 || S.vuln && S.vuln.id === p.id) {
+        const u = E("span");
+        u.textContent = p.uno ? "1!" : "?!";
+        u.style.cssText = "position:absolute;left:-8px;top:-6px;background:" + (p.uno ? "#f2a900" : "#e5383b") + ";color:#fff;font-size:11px;font-weight:900;border-radius:8px;padding:1px 5px";
+        a.append(u);
+      }
+      const nm = E("div");
+      nm.textContent = p.id === me ? "Jij" : q ? q.name : p.n;
+      nm.style.cssText = "font-size:12px;font-weight:700;max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:" + (on ? col : "var(--tx)");
+      const s2 = E("div");
+      s2.textContent = "🏆 " + p.w;
+      s2.style.cssText = "font-size:11px;color:var(--mu)";
+      d.append(a, nm, s2);
+      return d;
+    }
+    function btn(t, f, bg) {
+      const b = E("button", "btn", t);
+      b.style.cssText = "min-height:46px;font-size:16px" + (bg ? ";background:" + bg : "");
+      b.onclick = f;
+      return b;
+    }
+    function render() {
+      if (!S) return;
+      const m = meP();
+      if (S.ph === "play") {
+        const k = S.rnd + "|" + S.turn;
+        if (k !== tKey) {
+          tKey = k;
+          lEnd = performance.now() + S.left;
+        }
+      }
+      sc.textContent = S.ph === "setup" ? "Pesten · instellingen" : S.ph === "fin" ? "Spel klaar!" : "Ronde " + (S.rnd + 1) + (S.opt.best === 3 ? " · best of 3" : " · één ronde") + (m ? " · jij: " + m.w + (m.w === 1 ? " ronde" : " rondes") : "");
+      info.textContent = (S.log || []).slice(-3).join(" · ");
+      info.style.display = S.log && S.log.length ? "" : "none";
+      seats.replaceChildren(...(S.pl.length ? S.pl : net.players.map((p) => ({ id: p.id, n: p.name, c: 0, w: 0 }))).map(seat));
+      renderOpts();
+      table.style.display = fan.style.display = S.ph === "play" || S.ph === "rend" ? "flex" : "none";
+      if (S.top) {
+        table.replaceChildren();
+        const dk = back(56, S.dk);
+        dk.style.cursor = myTurn() && !S.drew ? "pointer" : "default";
+        dk.onclick = () => act({ k: "draw" });
+        dk.title = "Pak een kaart";
+        const tp = card2(S.top, 72);
+        tp.style.transform = "rotate(-4deg)";
+        const inf = E("div");
+        inf.style.cssText = "display:flex;flex-direction:column;gap:6px;align-items:center;font-weight:800;font-size:13px;min-width:66px";
+        const cd = E("div");
+        cd.style.cssText = "width:38px;height:38px;border-radius:50%;background:#fff;border:2px solid #c9ccd6;display:flex;align-items:center;justify-content:center;font-size:24px;color:" + (S.col && RED[S.col] ? "#d62828" : "#1b1d2a");
+        cd.textContent = S.col ? SU[S.col] : "★";
+        const cl = E("div");
+        cl.textContent = S.col ? SN[S.col] + (S.top.r === "B" ? " gevraagd" : "") : "alles mag";
+        const dr = E("div");
+        dr.textContent = S.dir > 0 ? "↻ rechtsom" : "↺ linksom";
+        dr.style.color = "var(--mu)";
+        inf.append(cd, cl, dr);
+        if (S.pend) {
+          const pe = E("div");
+          pe.textContent = "pak " + S.pend + "!";
+          pe.style.cssText = "background:#e5383b;color:#fff;border-radius:8px;padding:2px 8px";
+          inf.append(pe);
+        }
+        table.append(dk, tp, inf);
+      }
+      const c = cur2(), lastSp = myTurn() && myH.h.length === 1 && spec(myH.h[0]) && !S.pend;
+      who.textContent = S.ph === "setup" ? isH ? "Kies de regels en start" : "⏳ De host kiest de regels…" : S.ph === "play" ? myTurn() ? S.pend ? "Leg een 2 of joker, of pak " + S.pend : S.drew ? "Speel de gepakte kaart of pas" : lastSp ? "Niet eindigen op een pestkaart: pak een kaart" : S.again ? "Nog een keer!" : "Jij bent aan zet" : c ? pn(c.id, c.n) + " is aan zet" : "" : S.ph === "rend" ? "🏆 " + pn(S.rw) + " wint de ronde!" : S.ph === "fin" ? "🏆 " + pn(S.win) + " wint!" : "";
+      who.dataset.base = who.textContent;
+      who.style.color = "var(--tx)";
+      acts.replaceChildren();
+      if (S.ph === "play" && m) {
+        if (myTurn()) acts.append(S.drew ? btn("Pas ▶", () => act({ k: "pass" })) : btn(S.pend ? "Pak " + S.pend + " kaarten" : "Pak een kaart", () => act({ k: "draw" })));
+        const n = myH.h.length;
+        if (!m.uno && (n === 2 && myTurn() || n === 1 && S.vuln && S.vuln.id === me)) acts.append(btn("Laatste kaart! ☝️", () => act({ k: "last" }), "linear-gradient(135deg,#f2a900,#f77f00)"));
+        if (S.vuln && S.vuln.id !== me && S.pl.some((p) => p.id === S.vuln.id)) acts.append(btn("Betrapt! 🫵 " + pn(S.vuln.id), () => act({ k: "catch" }), "linear-gradient(135deg,#e5383b,#b5179e)"));
+      }
+      renderFan();
+      renderRend();
+      if (S.ph !== "play" || !myTurn()) closePick();
+      if (S.ph === "fin" && !podDone) {
+        podDone = 1;
+        st.style.minHeight = 320 + 60 * S.pl.length + "px";
+        const scores = {};
+        S.pl.forEach((p) => scores[p.id] = p.w);
+        net.result({ winner: S.win, scores, unit: " rondes" });
+      }
+    }
+    function renderFan() {
+      fan.replaceChildren();
+      if (S.ph === "setup") return;
+      const m = meP();
+      if (!m) {
+        const t = E("div", "hint");
+        t.textContent = "Je kijkt mee 👀";
+        t.style.cssText = "margin:auto;font-size:15px";
+        fan.append(t);
+        return;
+      }
+      const H = sorted();
+      if (sel >= H.length) sel = Math.max(0, H.length - 1);
+      const key = S.rnd + "|" + S.turn + "|" + H.map((c) => c.i).join(",");
+      if (key !== lastKey && myTurn()) {
+        lastKey = key;
+        const f = H.findIndex(playable);
+        if (f >= 0) sel = f;
+      }
+      H.forEach((c, k) => {
+        const ok = playable(c), d = card2(c, 66);
+        d.dataset.i = c.i;
+        d.dataset.ok = ok ? 1 : 0;
+        d.style.marginLeft = k ? "-16px" : "auto";
+        if (k === H.length - 1) d.style.marginRight = "auto";
+        d.style.cursor = ok ? "pointer" : "default";
+        if (myTurn()) {
+          if (ok) d.style.transform = "translateY(-16px)";
+          else d.style.filter = "brightness(.72) saturate(.4)";
+        }
+        if (k === sel && myTurn()) d.style.boxShadow = "0 0 0 3px var(--ac),0 6px 14px rgba(0,0,0,.35)";
+        d.onclick = () => {
+          sel = k;
+          tryPlay(c);
+        };
+        fan.append(d);
+      });
+      const sd = fan.children[sel];
+      if (sd && myTurn()) {
+        const l = sd.offsetLeft - fan.offsetLeft;
+        if (l < fan.scrollLeft) fan.scrollLeft = l - 10;
+        else if (l + 66 > fan.scrollLeft + fan.clientWidth) fan.scrollLeft = l + 76 - fan.clientWidth;
+      }
+    }
+    function renderOpts() {
+      opts.style.display = S.ph === "setup" ? "" : "none";
+      if (S.ph !== "setup") return;
+      opts.replaceChildren();
+      const o = S.opt, r = E("div");
+      r.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0;font-weight:700;flex-wrap:wrap";
+      const l = E("span");
+      l.textContent = "Aantal rondes";
+      const w = E("div");
+      w.style.cssText = "display:flex;gap:4px";
+      [[1, "1 ronde"], [3, "Best of 3"]].forEach(([v, t]) => {
+        const b = E("button", "btn" + (v === o.best ? "" : " sec"), t);
+        b.style.cssText = "padding:8px 12px;font-size:14px";
+        b.disabled = !isH;
+        b.onclick = () => {
+          o.best = v;
+          pub();
+        };
+        w.append(b);
+      });
+      r.append(l, w);
+      opts.append(r);
+      opts.append(E("div", "hint", (net.players.length >= 5 ? "5" : "7") + " kaarten per speler · 2 en joker mag je op elkaar stapelen"));
+      if (isH) {
+        const b = btn("Delen en starten ▶", () => {
+          if (S.ph === "setup") {
+            S.pl = net.players.map((p) => ({ id: p.id, n: p.name, c: 0, w: 0, uno: 0 }));
+            newRound();
+          }
+        });
+        b.style.marginTop = "8px";
+        opts.append(b);
+      } else opts.append(E("div", "hint", "De host kiest de regels en start het spel"));
+    }
+    function renderRend() {
+      rend.style.display = S.ph === "rend" ? "" : "none";
+      if (S.ph !== "rend") return;
+      rend.replaceChildren();
+      const h = E("div");
+      h.style.cssText = "font-weight:800;margin-bottom:6px";
+      h.textContent = "Gewonnen rondes · " + need() + " nodig";
+      rend.append(h);
+      S.pl.slice().sort((a, b) => b.w - a.w).forEach((p) => {
+        const r = E("div");
+        r.style.cssText = "display:flex;justify-content:space-between;padding:3px 8px;border-left:4px solid " + pcol(p.id) + ";margin:3px 0";
+        const a = E("span"), b = E("b");
+        a.textContent = pn(p.id, p.n);
+        b.textContent = "🏆 " + p.w;
+        r.append(a, b);
+        rend.append(r);
+      });
+      if (isH) rend.append(btn("Volgende ronde ▶", () => {
+        if (S.ph === "rend") newRound();
+      }));
+      else rend.append(E("div", "hint", "De volgende ronde begint zo…"));
+    }
+    function tryPlay(c) {
+      if (!playable(c)) {
+        beep(160, 0.05, "triangle", 0.02);
+        return;
+      }
+      if (c.r === "B") openPick(c.i);
+      else act({ k: "play", i: c.i });
+    }
+    function openPick(i) {
+      pickId = i;
+      pick.replaceChildren();
+      const b = E("div");
+      b.style.cssText = "background:var(--card);border-radius:18px;padding:16px;width:260px;box-shadow:0 10px 30px rgba(0,0,0,.4)";
+      const h = E("div");
+      h.textContent = "Boer: kies een kleur";
+      h.style.cssText = "font-weight:800;margin-bottom:10px";
+      const g = E("div");
+      g.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px";
+      "shdc".split("").forEach((k, n) => {
+        const x = E("button");
+        x.dataset.col = k;
+        x.textContent = n + 1 + " · " + SU[k] + " " + SN[k];
+        x.style.cssText = `min-height:64px;border:2px solid #c9ccd6;border-radius:14px;background:#fff;color:${RED[k] ? "#d62828" : "#1b1d2a"};font-weight:800;font-size:16px;cursor:pointer`;
+        x.onclick = () => {
+          act({ k: "play", i: pickId, col: k });
+          closePick();
+        };
+        g.append(x);
+      });
+      const cx = E("button", "btn sec", "Annuleer");
+      cx.style.marginTop = "10px";
+      cx.onclick = closePick;
+      b.append(h, g, cx);
+      pick.append(b);
+      pick.style.display = "flex";
+    }
+    function closePick() {
+      pickId = -1;
+      pick.style.display = "none";
+    }
+    function act(d) {
+      if (isH) hAct(me, d);
+      else net.send(d);
+    }
+    let deck = [], disc = [], HD = {}, DR = {}, tm = 0, tT = 0, tR = 0;
+    const shuf = (a) => {
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = R(i + 1);
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    };
+    function mkDeck() {
+      const d = [];
+      for (const s of "shdc") for (const r of RO.slice(0, 13)) d.push({ s, r });
+      d.push({ s: "j", r: "★" }, { s: "j", r: "★" });
+      shuf(d);
+      d.forEach((c, k) => c.i = k);
+      return d;
+    }
+    const P = (id) => S.pl.find((p) => p.id === id), nx = (i, k) => ((i + S.dir * k) % S.pl.length + S.pl.length) % S.pl.length;
+    const log = (t) => {
+      S.log = (S.log || []).concat(t).slice(-3);
+    };
+    function draw2(id, n) {
+      const got = [];
+      for (let k = 0; k < n; k++) {
+        if (!deck.length && disc.length > 1) {
+          const top = disc.pop();
+          deck = shuf(disc);
+          disc = [top];
+          log("🔀 Aflegstapel geschud");
+        }
+        if (!deck.length) break;
+        const c = deck.pop();
+        HD[id].push(c);
+        got.push(c);
+      }
+      const p = P(id);
+      if (p) p.uno = 0;
+      return got;
+    }
+    function pub() {
+      var _a;
+      S.seq = (S.seq || 0) + 1;
+      S.pl.forEach((p) => p.c = (HD[p.id] || []).length);
+      S.dk = deck.length;
+      S.left = S.ph === "play" ? Math.max(0, TURN - (Date.now() - tT)) : 0;
+      net.send(S);
+      S.pl.forEach((p) => {
+        var _a2;
+        if (p.id !== me) net.sendTo(p.id, { k: "h", rnd: S.rnd, h: HD[p.id] || [], dr: (_a2 = DR[p.id]) != null ? _a2 : -1 });
+      });
+      myH = { h: (HD[me] || []).slice(), dr: (_a = DR[me]) != null ? _a : -1 };
+      render();
+    }
+    function adv(k) {
+      S.t = nx(S.t, k);
+      S.turn++;
+      S.drew = 0;
+      S.again = k === 0 ? 1 : 0;
+      DR = {};
+      tT = Date.now();
+      if (S.vuln && S.turn > S.vuln.n + 1) S.vuln = null;
+    }
+    function hAct(id, d, auto2) {
+      if (!S || !d) return;
+      const p = P(id);
+      if (!p || S.ph !== "play") return;
+      const h = HD[id], isCur = S.pl[S.t].id === id;
+      if (d.k === "last") {
+        if (h.length <= 2 && !p.uno) {
+          p.uno = 1;
+          if (S.vuln && S.vuln.id === id) S.vuln = null;
+          log("☝️ " + pn(id) + ": laatste kaart!");
+          beep(700, 0.08, "triangle", 0.04);
+          pub();
+        }
+        return;
+      }
+      if (d.k === "catch") {
+        const v = S.vuln;
+        if (v && v.id !== id && HD[v.id] && HD[v.id].length === 1) {
+          draw2(v.id, 2);
+          S.vuln = null;
+          log("🫵 " + pn(id) + " betrapt " + pn(v.id) + ": pak 2");
+          beep(220, 0.15, "sawtooth", 0.03);
+          pub();
+        }
+        return;
+      }
+      if (!isCur) return;
+      if (d.k === "draw") {
+        if (S.drew) return;
+        if (S.pend) {
+          draw2(id, S.pend);
+          log((auto2 ? "⏱ " : "") + pn(id) + " pakt " + S.pend);
+          S.pend = 0;
+          adv(1);
+        } else {
+          const g = draw2(id, 1)[0];
+          if (g && okOn(g, S, h.length === 1) && !auto2) {
+            S.drew = 1;
+            DR[id] = g.i;
+          } else {
+            log((auto2 ? "⏱ " : "") + pn(id) + " pakt een kaart");
+            adv(1);
+          }
+        }
+        beep(330, 0.04, "triangle", 0.03);
+        pub();
+        return;
+      }
+      if (d.k === "pass") {
+        if (S.drew) {
+          log(pn(id) + " pakt en past");
+          adv(1);
+          pub();
+        }
+        return;
+      }
+      if (d.k !== "play") return;
+      const ci = h.findIndex((c2) => c2.i === d.i), c = h[ci];
+      if (!c || !okOn(c, S, h.length === 1) || S.drew && c.i !== DR[id] || c.r === "B" && !SU[d.col]) return;
+      h.splice(ci, 1);
+      disc.push(c);
+      S.top = { s: c.s, r: c.r, i: c.i };
+      S.col = c.r === "B" ? d.col : c.s === "j" ? null : c.s;
+      log(pn(id) + " speelt " + cname(c) + (c.r === "B" ? " → " + SN[S.col] : ""));
+      beep(520, 0.05, "triangle", 0.03);
+      if (!h.length) {
+        endRound(id);
+        return;
+      }
+      if (c.r === "2") {
+        S.pend += 2;
+        adv(1);
+      } else if (c.s === "j") {
+        S.pend += 5;
+        adv(1);
+      } else if (c.r === "7" || c.r === "H") adv(0);
+      else if (c.r === "8") adv(2);
+      else if (c.r === "A") {
+        S.dir *= -1;
+        adv(1);
+      } else adv(1);
+      if (h.length === 1 && !p.uno) S.vuln = { id, n: S.turn - 1 };
+      pub();
+    }
+    function endRound(id) {
+      const p = P(id);
+      p.w++;
+      S.rw = id;
+      S.pend = 0;
+      S.vuln = null;
+      S.drew = 0;
+      S.again = 0;
+      if (p.w >= need()) {
+        S.ph = "fin";
+        S.win = id;
+        [0, 1, 2].forEach((i) => setTimeout(() => beep(523 * Math.pow(1.26, i), 0.12, "triangle", 0.05), i * 120));
+      } else {
+        S.ph = "rend";
+        tR = Date.now();
+      }
+      pub();
+    }
+    function newRound() {
+      deck = mkDeck();
+      disc = [];
+      HD = {};
+      DR = {};
+      const n = S.pl.length >= 5 ? 5 : 7;
+      S.pl.forEach((p) => {
+        HD[p.id] = [];
+        p.uno = 0;
+      });
+      S.pl.forEach((p) => draw2(p.id, n));
+      let k = deck.length - 1;
+      while (spec(deck[k])) k--;
+      const t = deck.splice(k, 1)[0];
+      disc.push(t);
+      S.rnd++;
+      S.top = { s: t.s, r: t.r, i: t.i };
+      S.col = t.s;
+      S.t = S.rnd % S.pl.length;
+      S.dir = 1;
+      S.pend = 0;
+      S.vuln = null;
+      S.drew = 0;
+      S.again = 0;
+      S.turn = 0;
+      S.rw = null;
+      S.ph = "play";
+      S.log = [];
+      tT = Date.now();
+      pub();
+    }
+    function auto() {
+      const p = S.pl[S.t];
+      if (!p) return;
+      if (S.drew) hAct(p.id, { k: "pass" });
+      else hAct(p.id, { k: "draw" }, 1);
+    }
+    function tick() {
+      if (!S) return;
+      if (S.ph === "play" && Date.now() - tT >= TURN) auto();
+      else if (S.ph === "rend" && Date.now() - tR >= 1e4) newRound();
+    }
+    const off = net.on((d, from) => {
+      var _a;
+      if (!d || typeof d !== "object") return;
+      if (isH) {
+        if (d.k === "hi" && S) {
+          net.sendTo(from, S);
+          if (HD[from]) net.sendTo(from, { k: "h", rnd: S.rnd, h: HD[from], dr: (_a = DR[from]) != null ? _a : -1 });
+        } else hAct(from, d);
+      } else if (d.k === "s") {
+        S = d;
+        render();
+      } else if (d.k === "h" && Array.isArray(d.h)) {
+        myH = { h: d.h, dr: d.dr };
+        if (S) render();
+      }
+    });
+    const offP = net.onPlayers((ps) => {
+      const ids = new Set(ps.map((p) => p.id));
+      Object.keys(known).forEach((id) => {
+        if (ids.has(id)) return;
+        delete known[id];
+        if (!isH || !S) return;
+        const i = S.pl.findIndex((p) => p.id === id);
+        log("⚠️ " + (i >= 0 ? S.pl[i].n : "Iemand") + " heeft het spel verlaten");
+        if (i < 0) return;
+        const wasCur = i === S.t;
+        deck.unshift(...HD[id] || []);
+        delete HD[id];
+        S.pl.splice(i, 1);
+        if (S.vuln && S.vuln.id === id) S.vuln = null;
+        const n = S.pl.length;
+        if (i < S.t) S.t--;
+        if (wasCur) {
+          S.t = S.dir > 0 ? i % n : (i - 1 + n) % n;
+          S.drew = 0;
+          S.again = 0;
+          DR = {};
+          tT = Date.now();
+        }
+        if (S.t >= n) S.t = 0;
+        if (n === 1 && S.ph !== "setup") {
+          S.ph = "fin";
+          S.win = S.pl[0].id;
+          S.rw = null;
+        }
+      });
+      ps.forEach((p) => {
+        if (!known[p.id]) {
+          known[p.id] = 1;
+          if (isH && S) log("👋 " + net.pname(p) + " kijkt mee");
+        }
+      });
+      if (isH && S) pub();
+      else render();
+    });
+    const inp = input(st, [], (k) => {
+      if (!S || S.ph !== "play") return;
+      if (pickId >= 0) {
+        const n = "1234".indexOf(k);
+        if (n >= 0) {
+          act({ k: "play", i: pickId, col: "shdc"[n] });
+          closePick();
+        } else if (k === "Escape") closePick();
+        return;
+      }
+      const H = sorted();
+      if (k === "ArrowLeft" || k === "ArrowRight") {
+        if (!H.length) return;
+        sel = (sel + (k === "ArrowRight" ? 1 : -1) + H.length) % H.length;
+        renderFan();
+      } else if (k === "Enter") {
+        if (H[sel]) tryPlay(H[sel]);
+      } else if (k === "d" || k === "D") {
+        if (myTurn()) act({ k: S.drew ? "pass" : "draw" });
+      } else if (k === "l" || k === "L") act({ k: "last" });
+    });
+    const stopLoop = loop(() => {
+      if (!S || S.ph !== "play") return;
+      const s = Math.max(0, Math.ceil((lEnd - performance.now()) / 1e3)), t = (who.dataset.base || "") + " · ⏱ " + s + " s";
+      if (who.textContent !== t) who.textContent = t;
+      who.style.color = s <= 5 ? "#e5383b" : "var(--tx)";
+    });
+    let dbg = null;
+    if (DBG) {
+      dbg = window.__dbg = {
+        get S() {
+          return S;
+        },
+        get H() {
+          return isH ? HD : null;
+        },
+        get my() {
+          return myH;
+        },
+        get deck() {
+          return isH ? deck : null;
+        },
+        okOn,
+        rig(id, cards) {
+          HD[id] = cards;
+          pub();
+        },
+        top(c, col) {
+          S.top = c;
+          S.col = col === void 0 ? c.s === "j" ? null : c.s : col;
+          pub();
+        },
+        force: () => {
+          if (isH && S && S.ph === "play") auto();
+        },
+        next: () => {
+          if (isH && S.ph === "rend") newRound();
+        }
+      };
+    }
+    if (isH) {
+      S = { k: "s", ph: "setup", rnd: -1, t: 0, dir: 1, pend: 0, top: null, col: "s", pl: [], opt: { best: 3 }, log: [], turn: 0, dk: 0 };
+      tm = setInterval(tick, 200);
+      pub();
+    } else {
+      net.send({ k: "hi" });
+      sc.textContent = "Wachten op de host…";
+    }
+    return () => {
+      st.style.minHeight = "";
+      off();
+      offP();
+      inp.stop();
+      stopLoop();
+      clearInterval(tm);
+      if (dbg && window.__dbg === dbg) delete window.__dbg;
+    };
+  } },
+  { id: "drawteams", n: "Tekenen & raden in teams", e: "🖍️", c: "Samen", g: "#e5383b,#2f80ed", min: 2, max: 8, run(st, net) {
+    const EASY = "aap,appel,auto,baby,bal,banaan,bank,bed,bij,bloem,boek,boom,boot,bord,bril,brood,brug,bus,cactus,camera,clown,computer,dak,deur,dolfijn,draak,drum,eend,egel,ei,fiets,fles,gitaar,glas,haai,hamer,hand,hart,hoed,hond,huis,ijsje,jas,kaars,kaas,kameel,kasteel,kat,kerk,kers,ketting,kikker,kip,klok,koe,koffer,konijn,krab,kroon,laars,ladder,lamp,leeuw,lepel,maan,mes,mier,molen,muis,muts,neus,olifant,oog,paard,paddenstoel,pan,papegaai,paraplu,piano,pijl,pinguïn,pizza,planeet,pop,raket,regenboog,ring,robot,schaar,schaap,schip,schoen,schildpad,slak,slang,sleutel,sneeuwpop,sok,spin,spook,ster,stoel,strand,tafel,tand,tandenborstel,tent,tijger,tomaat,toren,tractor,trein,trommel,trui,uil,varken,veer,vis,vlag,vlieger,vlinder,voet,vork,vuur,vuurtoren,walvis,wolk,wortel,zaag,zebra,zee,zeilboot,zon,zwaan,zwaard,ananas,emmer,gieter,heks,kameleon,ketel,koekje,krokodil,kwast,lantaarn,pannenkoek,puzzel,schommel,sleutelbos,snor,taart,telefoon,thee,vliegtuig,vogelhuisje".split(",");
+    const HARD = "achtbaan,astronaut,bliksem,boomhut,brandweerman,dinosaurus,duikbril,eiland,fietspomp,gevangenis,glijbaan,luchtballon,ijsbeer,kampvuur,kangoeroe,kermis,kerstman,kompas,koptelefoon,lieveheersbeestje,magneet,microscoop,mummie,duikboot,parachute,piraat,regenjas,ridder,rolstoel,rups,satelliet,skelet,sneeuwvlok,spinnenweb,standbeeld,stofzuiger,supermarkt,tandarts,telescoop,tornado,tovenaar,tuinkabouter,verjaardag,vulkaan,waterval,windmolen,woestijn,zandkasteel,zeemeermin,zonnebril,zwembad,kapper,bibliotheek,ziekenhuis,aquarium,trampoline,vogelverschrikker,wasmachine,brievenbus,stoplicht,iglo,hangmat,schatkist,eenhoorn,kwal,octopus,pauw,neushoorn,lift,rugzak,dartbord,schaakbord,vliegende schotel,draaimolen,hoefijzer,kruiwagen,sneeuwman,ruimteschip,onweer,dromen".split(",");
+    const PC = ["#1b1d2a", "#e74c3c", "#2e86de", "#27ae60", "#f39c12", "#8e5a3c"], SZ = [3, 7, 14], TL = 6e4, BON = 2e4, W = 360, H = 300, isH = net.isHost, me = net.me.id;
+    const TN = ["rood", "blauw"], TE = ["🔴", "🔵"], TC = ["#e5383b", "#2f80ed"];
+    const norm = (s) => String(s).toLowerCase().trim().replace(/\s+/g, " ");
+    const sc = E("div", "sc"), note = E("div", "hint"), setup = E("div", "dtsetup"), game = E("div", "dtgame");
+    setup.style.cssText = "max-width:380px;margin:6px auto";
+    const banner = E("div", "dtban");
+    banner.style.cssText = "font-weight:800;color:#fff;border-radius:12px;padding:6px 10px;margin:4px auto 6px;max-width:360px;font-size:15px";
+    const board = E("div", "dtboard");
+    board.style.cssText = "display:flex;flex-direction:column;gap:4px;align-items:center;margin:2px 0 6px";
+    const word = E("div", "dtword");
+    word.style.cssText = "font-size:22px;font-weight:800;letter-spacing:.15em;min-height:32px;margin:4px 0;font-variant-numeric:tabular-nums";
+    const barW = E("div");
+    barW.style.cssText = "height:6px;border-radius:99px;background:var(--bg);overflow:hidden;max-width:360px;margin:0 auto 8px";
+    const bar = E("div");
+    bar.style.cssText = "height:100%;width:100%;border-radius:99px;background:#38d9a9";
+    barW.append(bar);
+    st.append(sc, note, setup, game);
+    const c = mkCanvas(st, W, H), x = c.getContext("2d", { willReadFrequently: true });
+    c.style.background = "#fffdf7";
+    c.style.cursor = "crosshair";
+    const tools = E("div", "dttools");
+    tools.style.cssText = "display:none;gap:6px;justify-content:center;align-items:center;flex-wrap:wrap;margin:8px 0";
+    let col = 0, sz = 1;
+    const cbs = PC.map((cc, i) => {
+      const b = E("button");
+      b.style.cssText = "width:30px;height:30px;border-radius:50%;border:3px solid transparent;background:" + cc + ";cursor:pointer";
+      b.onclick = () => {
+        col = i;
+        toolUI();
+      };
+      tools.append(b);
+      return b;
+    });
+    const sbs = SZ.map((s, i) => {
+      const b = E("button", "btn");
+      b.style.cssText = "width:36px;height:36px;padding:0;border-radius:50%;background:var(--bg);color:var(--tx);display:flex;align-items:center;justify-content:center";
+      const d = E("span");
+      d.style.cssText = "display:block;border-radius:50%;background:currentColor;width:" + (s + 4) + "px;height:" + (s + 4) + "px";
+      b.append(d);
+      b.onclick = () => {
+        sz = i;
+        toolUI();
+      };
+      tools.append(b);
+      return b;
+    });
+    const bClr = E("button", "btn", "🗑️ Wis");
+    bClr.style.cssText = "background:var(--bg);color:var(--tx)";
+    bClr.onclick = () => {
+      if (!amDrawer()) return;
+      clear();
+      if (isH) strokes = [];
+      net.send({ k: "clr" });
+    };
+    tools.append(bClr);
+    const pick = E("div", "dtpick");
+    pick.style.cssText = "display:none;gap:8px;justify-content:center;flex-wrap:wrap;margin:10px 0";
+    const gRow = E("div", "dtg");
+    gRow.style.cssText = "display:none;gap:6px;justify-content:center;margin:8px auto;max-width:360px";
+    const gIn = E("input");
+    gIn.maxLength = 30;
+    gIn.placeholder = "Wat tekent je teamgenoot?";
+    gIn.autocomplete = "off";
+    gIn.style.cssText = "flex:1;min-width:0;padding:10px 12px;border:1px solid var(--ln,#ccc);border-radius:12px;background:var(--bg);color:var(--tx);font:inherit;font-size:16px";
+    const gBtn = E("button", "btn", "Raad!");
+    gRow.append(gIn, gBtn);
+    const feed = E("div");
+    feed.style.cssText = "max-width:360px;margin:6px auto 0;text-align:left;font-size:13px;min-height:20px;line-height:1.5";
+    const info = E("div");
+    info.style.cssText = "font-weight:700;min-height:22px;margin-top:6px";
+    game.append(banner, board, word, barW, pick, tools, c, gRow, info, feed);
+    st.append(E("div", "hint", "Teken met je vinger of muis · alleen je eigen team raadt (typ + Enter) · binnen 20 s geraden = bonuspunt · de andere ploeg kijkt mee en mag reageren"));
+    let S = null, notes = [], known = {}, lEnd = 0, lKey = "", drawing = 0, pend = [], last = null, flushT = 0, chosen = -1, tms = [], scBase = "", podDone = 0;
+    net.players.forEach((p) => known[p.id] = net.pname(p));
+    const amDrawer = () => S && S.ph === "draw" && S.dr === me, teamOf = (id) => S ? S.T[0].includes(id) ? 0 : S.T[1].includes(id) ? 1 : -1 : -1;
+    const nm = (id, n) => {
+      const q = net.players.find((x2) => x2.id === id);
+      if (q) return net.pname(q);
+      const p = S && S.pl.find((p2) => p2.id === id);
+      return p ? p.n : n || "…";
+    };
+    function clear() {
+      x.fillStyle = "#fffdf7";
+      x.fillRect(0, 0, W, H);
+    }
+    function seg(ci, w, p) {
+      x.strokeStyle = PC[ci] || PC[0];
+      x.lineWidth = SZ[w] || SZ[1];
+      x.lineCap = x.lineJoin = "round";
+      x.beginPath();
+      x.moveTo(p[0], p[1]);
+      if (p.length === 2) x.lineTo(p[0] + 0.1, p[1]);
+      for (let i = 2; i < p.length; i += 2) x.lineTo(p[i], p[i + 1]);
+      x.stroke();
+    }
+    function toolUI() {
+      cbs.forEach((b, i) => b.style.borderColor = i === col ? "var(--ac)" : "transparent");
+      sbs.forEach((b, i) => {
+        b.style.background = i === sz ? "var(--ac)" : "var(--bg)";
+        b.style.color = i === sz ? "#fff" : "var(--tx)";
+      });
+    }
+    function chip2(id, txt) {
+      const q = net.players.find((x2) => x2.id === id), pc = q && q.col || "var(--mu)", on = id === me, d = E("div");
+      d.style.cssText = "display:inline-flex;align-items:center;padding:2px 9px 2px 2px;margin:2px;border-radius:99px;font-size:13px;font-weight:" + (on ? "700" : "600") + ";color:var(--tx);border:2px solid " + pc + ";background:" + (on ? "color-mix(in srgb," + pc + " 18%,var(--bg))" : "var(--bg)");
+      const av = E("span", "pav s");
+      av.style.setProperty("--c", pc);
+      av.textContent = q && q.av || "🙂";
+      const t = E("span");
+      t.textContent = txt;
+      d.append(av, t);
+      return d;
+    }
+    const pn = (id) => {
+      const q = net.players.find((x2) => x2.id === id), p = S.pl.find((p2) => p2.id === id);
+      return q ? q.name : p ? p.n : "…";
+    };
+    function mmss(ms) {
+      const s = Math.max(0, Math.ceil(ms / 1e3));
+      return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+    }
+    const mkB = (t, f, on) => {
+      const b = E("button", "btn" + (on === 0 ? " sec" : ""), t);
+      b.onclick = f;
+      b.style.margin = "3px";
+      return b;
+    };
+    function renderSetup() {
+      setup.replaceChildren();
+      const cols = E("div");
+      cols.style.cssText = "display:flex;gap:8px;justify-content:center";
+      [0, 1].forEach((t) => {
+        const box = E("div");
+        box.dataset.team = t;
+        box.style.cssText = "flex:1;min-width:0;border:2px solid " + TC[t] + ";border-radius:14px;padding:6px 4px;background:color-mix(in srgb," + TC[t] + " 8%,var(--card,var(--bg)))";
+        const h = E("div");
+        h.style.cssText = "font-weight:800;color:" + TC[t] + ";margin-bottom:4px";
+        h.textContent = TE[t] + " Team " + TN[t] + " (" + S.T[t].length + ")";
+        box.append(h);
+        S.T[t].forEach((id) => {
+          const d = chip2(id, pn(id) + (id === me ? " (jij)" : ""));
+          d.style.maxWidth = "100%";
+          box.append(d);
+        });
+        cols.append(box);
+      });
+      setup.append(cols);
+      const row = E("div");
+      row.style.cssText = "margin:8px 0;display:flex;flex-wrap:wrap;justify-content:center";
+      if (teamOf(me) >= 0) row.append(mkB("⇄ Wissel van team", () => {
+        if (isH) hSwitch(me);
+        else net.send({ k: "sw" });
+      }, 0));
+      setup.append(row);
+      if (isH) {
+        const seg2 = (lab, opts, cur2, set) => {
+          const r = E("div");
+          r.style.cssText = "display:flex;align-items:center;justify-content:center;gap:4px;margin:4px 0;flex-wrap:wrap";
+          const l = E("span", "hint");
+          l.style.cssText = "min-width:110px;text-align:right;margin:0 4px 0 0";
+          l.textContent = lab;
+          r.append(l);
+          opts.forEach(([t, v]) => {
+            const b = mkB(t, () => set(v), cur2 === v ? 1 : 0);
+            b.style.cssText = "margin:0;padding:6px 12px;font-size:14px";
+            r.append(b);
+          });
+          setup.append(r);
+        };
+        seg2("Beurten per team", [["3", 3], ["5", 5]], S.R, (v) => {
+          S.R = v;
+          pub();
+        });
+        seg2("Woorden", [["😊 Makkelijk", 0], ["🧠 Moeilijk", 1]], S.hard, (v) => {
+          S.hard = v;
+          pub();
+        });
+        row.prepend(mkB("🔀 Schudden", hShuffle, 0));
+        const go = mkB("▶ Start", hStart, 1);
+        go.style.cssText = "margin:10px auto 0;display:block;font-size:17px;padding:10px 28px";
+        setup.append(go);
+      } else {
+        const p = E("p", "wait");
+        p.textContent = "⏳ Wachten tot de host start · " + S.R + " beurten per team · " + (S.hard ? "moeilijke" : "makkelijke") + " woorden";
+        setup.append(p);
+      }
+    }
+    function render() {
+      if (!S) return;
+      const key = S.t + ":" + S.ph;
+      const dr = S.dr === me, myT = teamOf(me);
+      if (key !== lKey) {
+        lKey = key;
+        lEnd = performance.now() + (S.tl || 0);
+        if (S.ph === "pick") {
+          clear();
+          chosen = -1;
+          gIn.value = "";
+        }
+      }
+      const ns = notes.slice(-2);
+      if (S.pl.length < 4 && S.ph !== "fin") ns.unshift("Met minder dan 4 spelers is dit een testpotje (een team van 1 laat de andere ploeg raden) — vanaf 4 wordt het echt leuk");
+      note.textContent = ns.join(" · ");
+      note.style.display = ns.length ? "" : "none";
+      setup.style.display = S.ph === "team" ? "" : "none";
+      game.style.display = S.ph === "team" ? "none" : "";
+      if (S.ph === "team") {
+        sc.textContent = scBase = "Teams kiezen · " + S.pl.length + " spelers";
+        renderSetup();
+        return;
+      }
+      sc.textContent = scBase = TE[0] + " Rood " + S.sc[0] + " – " + S.sc[1] + " Blauw " + TE[1] + (S.ph === "fin" ? " · klaar!" : " · beurt " + (S.t + 1) + "/" + 2 * S.R);
+      board.replaceChildren(...[0, 1].map((t) => {
+        const r = E("div");
+        r.style.cssText = "display:flex;flex-wrap:wrap;justify-content:center;align-items:center;" + (S.ph !== "fin" && t !== S.team ? "opacity:.6" : "");
+        const l = E("b");
+        l.style.cssText = "color:" + TC[t] + ";margin-right:4px";
+        l.textContent = TE[t] + " " + S.sc[t];
+        r.append(l);
+        S.T[t].forEach((id) => r.append(chip2(id, (id === S.dr && S.ph !== "fin" ? "🖌️ " : "") + pn(id) + (id === me ? " (jij)" : "") + (id === S.ok ? " ✅" : ""))));
+        return r;
+      }));
+      const tm2 = S.team;
+      banner.style.background = TC[tm2];
+      banner.style.display = S.ph === "fin" ? "none" : "";
+      const gt = S.gt == null ? tm2 : S.gt;
+      banner.textContent = (gt === tm2 ? TE[tm2] + " Team " + TN[tm2] + " raadt" : TE[tm2] + " " + TN[tm2] + " tekent · " + TE[gt] + " " + TN[gt] + " raadt (oefenen)") + (dr ? " · jij tekent!" : myT === gt ? " · raad mee!" : myT >= 0 ? " · jullie kijken mee 👀" : "");
+      tools.style.display = dr && S.ph === "draw" ? "flex" : "none";
+      pick.style.display = dr && S.ph === "pick" ? "flex" : "none";
+      gRow.style.display = !dr && S.ph === "draw" && myT === S.gt ? "flex" : "none";
+      barW.style.visibility = S.ph === "draw" ? "visible" : "hidden";
+      word.style.letterSpacing = "0";
+      if (S.ph === "fin") {
+        const t = S.sc[0] === S.sc[1] ? -1 : S.sc[0] > S.sc[1] ? 0 : 1;
+        word.textContent = t < 0 ? "🤝 Gelijkspel!" : TE[t] + " Team " + TN[t] + " wint!";
+        info.textContent = "";
+        feed.replaceChildren();
+        clear();
+        if (!podDone) {
+          podDone = 1;
+          const scores = {};
+          S.T.forEach((m, i) => m.forEach((id) => scores[id] = S.sc[i]));
+          net.result({ winner: null, scores, unit: " pt", title: t < 0 ? "Gelijkspel 🤝" : TE[t] + " Team " + TN[t] + " wint!", text: "Rood " + S.sc[0] + " – " + S.sc[1] + " Blauw" });
+        }
+        return;
+      }
+      if (S.ph === "pick") {
+        word.textContent = dr ? "Kies een woord" : nm(S.dr) + " kiest een woord…";
+        info.textContent = "";
+        if (dr && chosen < 0) {
+          pick.replaceChildren(...(S.ch || []).map((w, i) => {
+            const b = E("button", "btn", w);
+            b.style.fontSize = "16px";
+            b.onclick = () => {
+              chosen = i;
+              if (isH) hChoose(me, i);
+              else net.send({ k: "ch", i });
+            };
+            return b;
+          }));
+        }
+      } else if (S.ph === "draw") {
+        word.textContent = dr ? "Teken: " + S.w : S.mask.split("").join(" ");
+        word.style.letterSpacing = dr ? "0" : ".15em";
+        info.textContent = dr ? "Alleen team " + TN[S.gt] + " raadt" : "";
+      } else {
+        word.textContent = "Het woord was: " + S.w;
+        info.textContent = S.ok ? "✅ " + nm(S.ok) + " raadde het · +" + (S.bon ? 2 : 1) + " voor team " + TN[tm2] + (S.bon ? " (snel! bonus)" : "") : "⏱ Niet geraden — geen punt";
+      }
+      feed.replaceChildren(...(S.feed || []).slice(-8).map((f) => {
+        const d = E("div");
+        d.textContent = f.ok ? "✅ " + nm(f.id, f.n) + " heeft het geraden!" : nm(f.id, f.n) + ": " + f.t;
+        d.style.color = f.ok ? "#27ae60" : "var(--tx)";
+        return d;
+      }));
+    }
+    const pos = (e) => {
+      const r = c.getBoundingClientRect();
+      return [Math.round((e.clientX - r.left) * W / r.width), Math.round((e.clientY - r.top) * H / r.height)];
+    };
+    function flush() {
+      if (!pend.length) return;
+      const p = last ? [...last, ...pend] : pend, msg = { k: "st", c: col, w: sz, p };
+      if (isH) strokes.push(msg);
+      net.send(msg);
+      last = pend.slice(-2);
+      pend = [];
+    }
+    c.onpointerdown = (e) => {
+      if (!amDrawer()) return;
+      e.preventDefault();
+      try {
+        c.setPointerCapture(e.pointerId);
+      } catch (x2) {
+      }
+      drawing = 1;
+      const q = pos(e);
+      pend = q;
+      last = null;
+      seg(col, sz, q);
+      clearInterval(flushT);
+      flushT = setInterval(flush, 50);
+    };
+    c.onpointermove = (e) => {
+      if (!drawing) return;
+      e.preventDefault();
+      const q = pos(e);
+      const prev = pend.length ? pend.slice(-2) : last;
+      if (prev) seg(col, sz, [...prev, ...q]);
+      pend.push(...q);
+    };
+    c.onpointerup = c.onpointercancel = (e) => {
+      if (!drawing) return;
+      drawing = 0;
+      clearInterval(flushT);
+      flush();
+      last = null;
+    };
+    function guess() {
+      const t = norm(gIn.value);
+      if (!t || !S || S.ph !== "draw" || amDrawer() || teamOf(me) !== S.gt) return;
+      gIn.value = "";
+      if (isH) hGuess(me, t);
+      else net.send({ k: "g", t });
+    }
+    gBtn.onclick = guess;
+    gIn.onkeydown = (e) => {
+      if (e.key === "Enter") guess();
+    };
+    let strokes = [], t0 = 0, hints = 0, tm = 0, rng = net.rng(), wq = [[], []];
+    const shuf = (a) => {
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    };
+    function pub() {
+      if (S.ph === "draw") S.tl = Math.max(0, TL - (Date.now() - t0));
+      const out = Object.assign({}, S);
+      delete out.ch;
+      if (S.ph === "pick" || S.ph === "draw") delete out.w;
+      net.send(out);
+      if (S.dr && S.dr !== me) {
+        if (S.ph === "draw") net.sendTo(S.dr, Object.assign({}, out, { w: S.w }));
+        if (S.ph === "pick") net.sendTo(S.dr, Object.assign({}, out, { ch: S.ch }));
+      }
+      render();
+    }
+    function hSwitch(id) {
+      if (S.ph !== "team") return;
+      const t = teamOf(id);
+      if (t < 0) return;
+      S.T[t] = S.T[t].filter((x2) => x2 !== id);
+      S.T[1 - t].push(id);
+      pub();
+    }
+    function hShuffle() {
+      if (S.ph !== "team") return;
+      const ids = shuf(S.pl.map((p) => p.id));
+      S.T = [[], []];
+      ids.forEach((id, i) => S.T[i % 2].push(id));
+      pub();
+    }
+    function hStart() {
+      if (S.ph !== "team") return;
+      if (!S.T[0].length || !S.T[1].length) {
+        notes.push("Elk team heeft minstens één speler nodig");
+        render();
+        return;
+      }
+      wq = [shuf(EASY.slice()), shuf(HARD.slice())];
+      S.sc = [0, 0];
+      S.t = 0;
+      startTurn();
+    }
+    function startTurn() {
+      tms.forEach(clearTimeout);
+      tms = [];
+      S.team = S.t % 2;
+      const m = S.T[S.team];
+      if (!m.length || !S.T[1 - S.team].length) {
+        S.ph = "fin";
+        S.dr = null;
+        pub();
+        return;
+      }
+      S.dr = m[Math.floor(S.t / 2) % m.length];
+      S.gt = m.length > 1 ? S.team : 1 - S.team;
+      S.ph = "pick";
+      S.ok = null;
+      S.bon = 0;
+      S.feed = [];
+      const q = wq[S.hard ? 1 : 0];
+      if (q.length < 3) q.push(...shuf((S.hard ? HARD : EASY).slice()));
+      S.ch = [q.pop(), q.pop(), q.pop()];
+      S.w = "";
+      S.mask = "";
+      strokes = [];
+      hints = 0;
+      clear();
+      pub();
+      const t = S.t;
+      tms.push(setTimeout(() => {
+        if (S.ph === "pick" && S.t === t) hChoose(S.dr, 0);
+      }, 2e4));
+    }
+    function hChoose(id, i) {
+      if (S.ph !== "pick" || id !== S.dr || !(i >= 0 && i < 3)) return;
+      S.w = S.ch[i];
+      S.mask = S.w.replace(/[^ ]/g, "_");
+      S.ph = "draw";
+      t0 = Date.now();
+      pub();
+    }
+    function hGuess(id, t) {
+      if (S.ph !== "draw" || id === S.dr || teamOf(id) !== S.gt) return;
+      const p = S.pl.find((p2) => p2.id === id);
+      if (!p) return;
+      if (t === norm(S.w)) {
+        const el = Date.now() - t0;
+        S.ok = id;
+        S.bon = el <= BON ? 1 : 0;
+        S.sc[S.team] += 1 + S.bon;
+        S.feed.push({ n: p.n, id, ok: 1 });
+        beep(880, 0.15, "triangle", 0.05);
+        endTurn();
+      } else {
+        S.feed.push({ n: p.n, id, t: t.slice(0, 30) });
+        S.feed = S.feed.slice(-10);
+        pub();
+      }
+    }
+    function next() {
+      S.t++;
+      if (S.t >= 2 * S.R) {
+        S.ph = "fin";
+        S.dr = null;
+        pub();
+      } else startTurn();
+    }
+    function endTurn() {
+      if (S.ph !== "draw") return;
+      S.ph = "end";
+      pub();
+      tms.push(setTimeout(next, 4500));
+    }
+    function tick() {
+      if (!S || S.ph !== "draw") return;
+      const tl = TL - (Date.now() - t0);
+      if (tl <= 0) {
+        endTurn();
+        return;
+      }
+      if (!hints && tl < TL / 2 && S.w.replace(/ /g, "").length >= 4) {
+        const idx = [];
+        for (let i = 0; i < S.w.length; i++) if (S.mask[i] === "_") idx.push(i);
+        if (idx.length) {
+          const i = idx[Math.floor(rng() * idx.length)];
+          S.mask = S.mask.slice(0, i) + S.w[i] + S.mask.slice(i + 1);
+        }
+        hints = 1;
+        pub();
+      }
+    }
+    const off = net.on((d, from) => {
+      if (!d || typeof d !== "object") return;
+      if (d.k === "st") {
+        if (from !== "host" && (!S || from !== S.dr || S.ph !== "draw")) return;
+        if (d.by === me) return;
+        if (Array.isArray(d.p) && d.p.length <= 400) {
+          seg(d.c | 0, d.w | 0, d.p.map((v) => +v || 0));
+          if (isH) {
+            strokes.push(d);
+            if (strokes.length > 400) strokes.shift();
+            net.send(Object.assign({ by: from }, d));
+          }
+        }
+        return;
+      }
+      if (d.k === "clr") {
+        if (from !== "host" && (!S || from !== S.dr)) return;
+        clear();
+        if (isH) {
+          strokes = [];
+          net.send({ k: "clr" });
+        }
+        return;
+      }
+      if (isH) {
+        if (!S) return;
+        if (d.k === "g") hGuess(from, norm(d.t));
+        else if (d.k === "ch") hChoose(from, d.i | 0);
+        else if (d.k === "sw") hSwitch(from);
+        else if (d.k === "hi") {
+          const out = Object.assign({}, S);
+          delete out.w;
+          delete out.ch;
+          if (S.ph === "end" || S.ph === "fin") out.w = S.w;
+          if (S.ph === "draw") out.tl = Math.max(0, TL - (Date.now() - t0));
+          net.sendTo(from, out);
+          for (let i = 0; i < strokes.length; i += 25) net.sendTo(from, { k: "all", s: strokes.slice(i, i + 25) });
+        }
+      } else if (d.k === "s") {
+        const was = S && S.ph;
+        if (S && d.t === S.t && d.ph !== "team") {
+          if (d.w == null && S.w) d.w = S.w;
+          if (!d.ch && S.ch) d.ch = S.ch;
+        }
+        S = d;
+        if (S.ph === "end" && was !== "end") beep(S.ok ? 660 : 200, 0.15, "triangle", 0.04);
+        render();
+      } else if (d.k === "all" && Array.isArray(d.s)) d.s.forEach((s) => seg(s.c | 0, s.w | 0, s.p));
+    });
+    const offP = net.onPlayers((ps) => {
+      const ids = new Set(ps.map((p) => p.id));
+      Object.keys(known).forEach((id) => {
+        if (!ids.has(id)) {
+          notes.push("⚠️ " + known[id] + " heeft het spel verlaten");
+          delete known[id];
+          if (isH && S) {
+            const wasDr = id === S.dr;
+            S.pl = S.pl.filter((p) => p.id !== id);
+            S.T = S.T.map((m) => m.filter((x2) => x2 !== id));
+            if (S.ph !== "team" && S.ph !== "fin" && (!S.T[0].length || !S.T[1].length)) {
+              tms.forEach(clearTimeout);
+              S.ph = "fin";
+              S.dr = null;
+            } else if (wasDr && S.ph === "draw") endTurn();
+            else if (wasDr && S.ph === "pick") next();
+          }
+        }
+      });
+      ps.forEach((p) => {
+        if (!known[p.id]) {
+          known[p.id] = net.pname(p);
+          if (isH && S && !S.pl.some((x2) => x2.id === p.id)) {
+            S.pl.push({ id: p.id, n: p.name });
+            const t = S.T[0].length <= S.T[1].length ? 0 : 1;
+            S.T[t].push(p.id);
+          }
+        }
+      });
+      if (isH && S) pub();
+      else render();
+    });
+    const stopLoop = loop(() => {
+      if (!S || S.ph !== "draw") return;
+      const f = Math.max(0, (lEnd - performance.now()) / TL);
+      bar.style.width = f * 100 + "%";
+      bar.style.background = `hsl(${Math.round(f * 120)},70%,50%)`;
+      sc.textContent = scBase + " · ⏱ " + mmss(lEnd - performance.now());
+    });
+    clear();
+    toolUI();
+    st.dt = { get S() {
+      return S;
+    }, strokes: () => strokes.length };
+    if (isH) {
+      S = { k: "s", ph: "team", t: 0, R: 3, hard: 0, team: 0, dr: null, ok: null, bon: 0, sc: [0, 0], T: [[], []], pl: net.players.map((p) => ({ id: p.id, n: p.name })), feed: [], mask: "" };
+      net.players.forEach((p, i) => S.T[i % 2].push(p.id));
+      tm = setInterval(tick, 250);
+      pub();
+    } else {
+      net.send({ k: "hi" });
+      sc.textContent = "Wachten op de host…";
+    }
+    return () => {
+      off();
+      offP();
+      stopLoop();
+      clearInterval(tm);
+      clearInterval(flushT);
+      tms.forEach(clearTimeout);
+      c.onpointerdown = c.onpointermove = c.onpointerup = c.onpointercancel = null;
     };
   } },
   { id: "sudoku", n: "Sudoku samen", e: "🧮", c: "Samen", g: "#8e2de2,#4a00e0", min: 2, max: 4, run(st, net) {
