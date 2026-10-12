@@ -707,7 +707,7 @@ const MP = [
       const p = selected();
       if (!p) return;
       p.yaw = (p.yaw - dx * 48e-4 + Math.PI * 5) % (Math.PI * 2);
-      p.pitch = clamp(p.pitch + dy * 36e-4, -1.15, 1.15);
+      p.pitch = clamp(p.pitch - dy * 36e-4, -1.15, 1.15);
     }
     const canvasClick = () => {
       if (!("ontouchstart" in window) && document.pointerLockElement !== c && c.requestPointerLock) try {
@@ -723,7 +723,7 @@ const MP = [
       const p = selected();
       if (p) {
         p.yaw = (p.yaw - e.movementX * 32e-4 + Math.PI * 5) % (Math.PI * 2);
-        p.pitch = clamp(p.pitch + e.movementY * 3e-3, -1.15, 1.15);
+        p.pitch = clamp(p.pitch - e.movementY * 3e-3, -1.15, 1.15);
       }
     };
     const canvasDown = (e) => {
@@ -933,8 +933,8 @@ const MP = [
         return;
       }
       const a = p.input || { f: 0, s: 0 }, len = Math.hypot(a.f || 0, a.s || 0), norm = len > 1 ? 1 / len : 1, speed = a.sprint ? 8 : 6.2;
-      const dx = (Math.sin(p.yaw) * (a.f || 0) + Math.cos(p.yaw) * (a.s || 0)) * speed * dt * norm;
-      const dz = (Math.cos(p.yaw) * (a.f || 0) - Math.sin(p.yaw) * (a.s || 0)) * speed * dt * norm;
+      const dx = (Math.sin(p.yaw) * (a.f || 0) + -Math.cos(p.yaw) * (a.s || 0)) * speed * dt * norm;
+      const dz = (Math.cos(p.yaw) * (a.f || 0) + Math.sin(p.yaw) * (a.s || 0)) * speed * dt * norm;
       let nx = p.x + dx, nz = p.z + dz;
       if (p.team === 0 && game.cp < 4) nz = Math.min(nz, CP[game.cp].z + 10);
       if (Math.abs(nx) < 77 && !blocked(nx, ground(nz) + 0.9, nz)) p.x = nx;
@@ -1252,7 +1252,7 @@ const MP = [
       if (p) {
         cam.position.set(p.x, ground(p.z) + 1.48, p.z);
         cam.rotation.order = "YXZ";
-        cam.rotation.set(-p.pitch, p.yaw + Math.PI, 0, "YXZ");
+        cam.rotation.set(p.pitch, p.yaw + Math.PI, 0, "YXZ");
         if (lastWeap !== p.weapon) {
           lastWeap = p.weapon;
           rebuildGun();
