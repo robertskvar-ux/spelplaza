@@ -16924,6 +16924,57 @@ function mqConnect(opts) {
     tryOne();
   });
 }
+function mqConnectAll(opts, wait = 4500) {
+  const urls = window.SPZ_MQ_URLS || MQ_URLS;
+  if (typeof mqtt === "undefined" || window.SPZ_NO_MQ) return Promise.resolve([]);
+  return new Promise((res) => {
+    const ok = [];
+    let left = urls.length, fin = false;
+    const done = () => {
+      if (fin) return;
+      fin = true;
+      res(ok.slice());
+    };
+    urls.forEach((url) => {
+      let cl;
+      try {
+        cl = mqtt.connect(url, Object.assign({ connectTimeout: wait, reconnectPeriod: 2e3, keepalive: 30, clean: true, clientId: "spz_" + Math.random().toString(36).slice(2, 12) }, opts || {}));
+      } catch (e) {
+        if (--left <= 0) done();
+        return;
+      }
+      cl.on("error", () => {
+      });
+      let counted = 0;
+      const t = setTimeout(() => {
+        if (!counted) {
+          counted = 1;
+          if (fin) return;
+          try {
+            cl.end(true);
+          } catch (e) {
+          }
+          if (--left <= 0) done();
+        }
+      }, wait);
+      cl.once("connect", () => {
+        if (counted) return;
+        counted = 1;
+        clearTimeout(t);
+        if (fin) {
+          try {
+            cl.end(true);
+          } catch (e) {
+          }
+          return;
+        }
+        ok.push(cl);
+        if (--left <= 0) done();
+      });
+    });
+    setTimeout(done, wait + 200);
+  });
+}
 class MqConn {
   constructor(cl, out, peer, me) {
     this.cl = cl;
@@ -17209,43 +17260,53 @@ const NET = {
   },
   _hostMq() {
     const code = this.code, myPeer = this.peer;
-    mqConnect({ will: { topic: MQ_T + code + "/x", payload: "gone", qos: 0, retain: false } }).then((cl) => {
-      if (!cl) return;
+    mqConnectAll({ will: { topic: MQ_T + code + "/x", payload: "gone", qos: 0, retain: false } }).then((cls) => {
+      if (!cls.length) return;
       if (this.peer !== myPeer || !this.isHost) {
-        try {
-          cl.end(true);
-        } catch (e) {
-        }
+        cls.forEach((cl) => {
+          try {
+            cl.end(true);
+          } catch (e) {
+          }
+        });
         return;
       }
-      this.mq = cl;
+      this.mq = cls;
       const mc = this._mqc = {};
-      cl.subscribe(MQ_T + code + "/h");
-      cl.on("message", (topic, buf) => {
-        let m;
-        try {
-          m = JSON.parse(buf.toString());
-        } catch (e) {
-          return;
-        }
-        if (!m || typeof m.f !== "string") return;
-        const f = m.f.slice(0, 64);
-        if (m.t === "hi") {
-          const old = mc[f];
-          if (old && old.open) return;
-          const c2 = new MqConn(cl, MQ_T + code + "/c/" + f, f, "host");
-          mc[f] = c2;
-          this._onConn(c2);
-          return;
-        }
-        const c = mc[f];
-        if (!c) return;
-        if (m.t === "d") c._emit("data", m.d);
-        else if (m.t === "bye") {
-          c.open = false;
-          delete mc[f];
-          c._emit("close");
-        }
+      cls.forEach((cl) => {
+        cl.subscribe(MQ_T + code + "/h");
+        cl.on("message", (topic, buf) => {
+          let m;
+          try {
+            m = JSON.parse(buf.toString());
+          } catch (e) {
+            return;
+          }
+          if (!m || typeof m.f !== "string") return;
+          const f = m.f.slice(0, 64);
+          if (m.t === "hi") {
+            try {
+              cl.publish(MQ_T + code + "/c/" + f, JSON.stringify({ f: "host", t: "ack" }));
+            } catch (e) {
+            }
+            return;
+          }
+          let c = mc[f];
+          if (m.t === "d") {
+            if (!c || !c.open) {
+              c = new MqConn(cl, MQ_T + code + "/c/" + f, f, "host");
+              mc[f] = c;
+              this._onConn(c);
+            }
+            if (c.cl === cl) c._emit("data", m.d);
+            return;
+          }
+          if (m.t === "bye" && c && c.cl === cl) {
+            c.open = false;
+            delete mc[f];
+            c._emit("close");
+          }
+        });
       });
       this._announce();
     });
@@ -17253,10 +17314,13 @@ const NET = {
   _announce() {
     if (!this.isHost || !this.pub || !this.mq) return;
     const g = this.game && MP.find((x) => x.id === this.game);
-    try {
-      this.mq.publish(MQ_T + "pub/" + this.code, JSON.stringify({ host: this.me.name, av: this.me.av, col: this.me.col, people: this.players.filter((p) => !p.bot).length, total: this.players.length, game: g ? g.e + " " + g.n : null, ts: Date.now() }), { retain: true });
-    } catch (e) {
-    }
+    const msg = JSON.stringify({ host: this.me.name, av: this.me.av, col: this.me.col, people: this.players.filter((p) => !p.bot).length, total: this.players.length, game: g ? g.e + " " + g.n : null, ts: Date.now() });
+    this.mq.forEach((cl) => {
+      try {
+        cl.publish(MQ_T + "pub/" + this.code, msg, { retain: true });
+      } catch (e) {
+      }
+    });
     clearTimeout(this._annT);
     this._annT = setTimeout(() => this._announce(), 15e3);
   },
@@ -17312,32 +17376,35 @@ const NET = {
     const code = this.code, id = this.me.id || "m" + Math.random().toString(36).slice(2, 12);
     this.me.id = id;
     this._status("connecting", "Rechtstreekse verbinding lukt niet, omweg via doorgeefserver…");
-    mqConnect({ will: { topic: MQ_T + code + "/h", payload: JSON.stringify({ f: id, t: "bye" }), qos: 0, retain: false } }).then((cl) => {
-      if (!cl) {
+    mqConnectAll({ will: { topic: MQ_T + code + "/h", payload: JSON.stringify({ f: id, t: "bye" }), qos: 0, retain: false } }).then((cls) => {
+      if (!cls.length) {
         if (this.state === "connecting") this._status("error", "Geen verbinding met de kamer (ook de doorgeefserver lukt niet). Probeer opnieuw.");
         return;
       }
-      if (this.peer !== p || this.state === "off" || this.hostConn && this.hostConn.open && !this.hostConn.relay) {
+      const drop = (list) => list.forEach((cl) => {
         try {
           cl.end(true);
         } catch (e) {
         }
+      });
+      if (this.peer !== p || this.state === "off" || this.hostConn && this.hostConn.open && !this.hostConn.relay) {
+        drop(cls);
         return;
       }
-      this.mq = cl;
-      const c = new MqConn(cl, MQ_T + code + "/h", id, id);
-      const old = this.hostConn;
-      this.hostConn = c;
-      try {
-        old && old.close();
-      } catch (e) {
-      }
-      cl.subscribe([MQ_T + code + "/c/" + id, MQ_T + code + "/x"], () => {
+      let chosen = null;
+      cls.forEach((cl) => {
+        cl.subscribe([MQ_T + code + "/c/" + id, MQ_T + code + "/x"], () => {
+          try {
+            cl.publish(MQ_T + code + "/h", JSON.stringify({ f: id, t: "hi" }));
+          } catch (e) {
+          }
+        });
         cl.on("message", (topic, buf) => {
+          if (chosen && chosen.cl !== cl) return;
           if (topic.endsWith("/x")) {
-            if (c.open) {
-              c.open = false;
-              c._emit("close");
+            if (chosen && chosen.open) {
+              chosen.open = false;
+              chosen._emit("close");
             }
             return;
           }
@@ -17348,43 +17415,76 @@ const NET = {
             return;
           }
           if (!m) return;
-          if (m.t === "d") c._emit("data", m.d);
-          else if (m.t === "bye" && c.open) {
-            c.open = false;
-            c._emit("close");
+          if (m.t === "ack" && !chosen) {
+            if (this.peer !== p || this.state === "off") return;
+            const c = chosen = new MqConn(cl, MQ_T + code + "/h", id, id);
+            this.mq = [cl];
+            cls.filter((o) => o !== cl).forEach((o) => {
+              try {
+                o.publish(MQ_T + code + "/h", JSON.stringify({ f: id, t: "bye" }));
+              } catch (e) {
+              }
+              setTimeout(() => {
+                try {
+                  o.end(true);
+                } catch (e) {
+                }
+              }, 300);
+            });
+            const old = this.hostConn;
+            this.hostConn = c;
+            try {
+              old && old.close();
+            } catch (e) {
+            }
+            c.on("data", (d) => {
+              clearTimeout(this._joinTo);
+              this._clientRecv(d);
+            });
+            c.on("close", () => {
+              if (this.hostConn === c && this.state !== "off") this._status("error", "De host heeft de kamer gesloten");
+            });
+            c.send({ k: "hello", name: this.me.name, av: this.me.av, col: this.me.col });
+            return;
+          }
+          if (!chosen) return;
+          if (m.t === "d") chosen._emit("data", m.d);
+          else if (m.t === "bye" && chosen.open) {
+            chosen.open = false;
+            chosen._emit("close");
           }
         });
-        c.on("data", (m) => {
-          clearTimeout(this._joinTo);
-          this._clientRecv(m);
-        });
-        c.on("close", () => {
-          if (this.hostConn === c && this.state !== "off") this._status("error", "De host heeft de kamer gesloten");
-        });
-        try {
-          cl.publish(MQ_T + code + "/h", JSON.stringify({ f: id, t: "hi" }));
-        } catch (e) {
-        }
-        setTimeout(() => c.send({ k: "hello", name: this.me.name, av: this.me.av, col: this.me.col }), 150);
       });
+      setTimeout(() => {
+        if (!chosen) {
+          drop(cls);
+          if (this.state === "connecting" && this.peer === p) this._status("error", "Geen antwoord van de kamer. Klopt de code en is de host nog online?");
+        }
+      }, 9e3);
     });
   },
   leave() {
     if (this.mq) {
-      const cl = this.mq;
+      const cls = this.mq, code = this.code, host = this.isHost, pub = this.pub;
       try {
-        if (this.isHost) {
-          if (this.pub) cl.publish(MQ_T + "pub/" + this.code, "", { retain: true });
-          cl.publish(MQ_T + this.code + "/x", "gone");
-        } else if (this.hostConn && this.hostConn.relay) this.hostConn.close();
+        if (!host && this.hostConn && this.hostConn.relay) this.hostConn.close();
       } catch (e) {
       }
-      setTimeout(() => {
+      cls.forEach((cl) => {
         try {
-          cl.end(true);
+          if (host) {
+            if (pub) cl.publish(MQ_T + "pub/" + code, "", { retain: true });
+            cl.publish(MQ_T + code + "/x", "gone");
+          }
         } catch (e) {
         }
-      }, 300);
+        setTimeout(() => {
+          try {
+            cl.end(true);
+          } catch (e) {
+          }
+        }, 300);
+      });
     }
     this.mq = null;
     this._mqc = null;
@@ -17413,28 +17513,31 @@ const NET = {
     const add = (r) => {
       if (!res.some((x) => x.code === r.code)) res.push(r);
     };
-    mqConnect().then((cl) => {
-      if (!cl) return;
+    mqConnectAll(null, 3500).then((cls) => {
       if (fin) {
-        try {
-          cl.end(true);
-        } catch (e) {
-        }
+        cls.forEach((cl) => {
+          try {
+            cl.end(true);
+          } catch (e) {
+          }
+        });
         return;
       }
-      mcl = cl;
-      cl.subscribe(MQ_T + "pub/+");
-      cl.on("message", (topic, buf) => {
-        const code = topic.split("/").pop();
-        if (!/^PUB\d\d$/.test(code) || code === this.code) return;
-        let m;
-        try {
-          m = JSON.parse(buf.toString());
-        } catch (e) {
-          return;
-        }
-        if (!m || Date.now() - (+m.ts || 0) > 5e4) return;
-        add({ code, host: String(m.host || "?").slice(0, 16), av: m.av || "🙂", col: m.col, people: m.people | 0, total: m.total | 0, game: m.game ? String(m.game).slice(0, 40) : null });
+      mcl = cls;
+      cls.forEach((cl) => {
+        cl.subscribe(MQ_T + "pub/+");
+        cl.on("message", (topic, buf) => {
+          const code = topic.split("/").pop();
+          if (!/^PUB\d\d$/.test(code) || code === this.code) return;
+          let m;
+          try {
+            m = JSON.parse(buf.toString());
+          } catch (e) {
+            return;
+          }
+          if (!m || Date.now() - (+m.ts || 0) > 5e4) return;
+          add({ code, host: String(m.host || "?").slice(0, 16), av: m.av || "🙂", col: m.col, people: m.people | 0, total: m.total | 0, game: m.game ? String(m.game).slice(0, 40) : null });
+        });
       });
     });
     const end = () => {
@@ -17444,10 +17547,12 @@ const NET = {
         peer && peer.destroy();
       } catch (e) {
       }
-      try {
-        mcl && mcl.end(true);
-      } catch (e) {
-      }
+      (mcl || []).forEach((cl) => {
+        try {
+          cl.end(true);
+        } catch (e) {
+        }
+      });
       res.sort((a, b) => (a.game ? 1 : 0) - (b.game ? 1 : 0) || b.people - a.people);
       done(res);
     };
@@ -17461,9 +17566,7 @@ const NET = {
       if (e.type !== "peer-unavailable") end();
     });
     peer.on("open", () => {
-      let left = PUB_N;
       const one = () => {
-        if (--left <= 0) end();
       };
       PUB_CODES.forEach((code) => {
         if (code === this.code) {
@@ -17503,7 +17606,7 @@ const NET = {
         });
       });
     });
-    setTimeout(end, 7e3);
+    setTimeout(end, 6e3);
   },
   // ---- host side ----
   _playersMsg() {
