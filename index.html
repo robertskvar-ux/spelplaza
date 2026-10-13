@@ -434,7 +434,7 @@ const MP = [
  @media(max-width:600px){.ddobjective{font-size:12px}.ddclock{font-size:15px}.ddtop{padding:6px 8px}.ddstatus,.ddcall{font-size:11px;padding:5px 7px}.ddcontrols .btn{padding:9px 11px;min-width:52px}}
  `;
     document.head.append(style);
-    const score = E("div", "sc"), frame = E("div", "ddframe"), hint = E("div", "hint d dhint", "AZERTY: Z/Q/S/D lopen · kijken met muis, slepen, A/E of pijltjes · linksklik/F schieten · rechtsklik/C richten · R herladen · 1–5 wapens · G granaat · spatie sprint · Esc/⚙ menu · H heal · V help · X opgeven · v8");
+    const score = E("div", "sc"), frame = E("div", "ddframe"), hint = E("div", "hint d dhint", "AZERTY: Z/Q/S/D lopen · kijken met muis, slepen, A/E of pijltjes · linksklik/F schieten · rechtsklik/C richten · R herladen · 1–5 wapens · G granaat · spatie sprint · Esc/⚙ menu · H heal · V help · X opgeven · v9");
     st.prepend(score);
     st.append(frame, hint);
     const T = three(frame, W, H, { fov: 74, far: 390 }), S = T.s, cam = T.cam, c = T.c, r = T.r;
@@ -1438,7 +1438,7 @@ const MP = [
       const D = DIFF[botDifficulty];
       botClock += dt;
       if (botClock < D.think) return;
-      const tick = botClock;
+      const tick2 = botClock;
       botClock = 0;
       for (const p of ps.values()) {
         if (!net.isBot(p.id) || !p.alive || p.landing > 0) continue;
@@ -1484,16 +1484,16 @@ const MP = [
           const ty = ground(target.z) + 1.2 - (ground(p.z) + 1.48), dx = target.x - p.x, dz = target.z - p.z;
           aimYaw = Math.atan2(dx, dz);
           aimPitch = Math.atan2(ty, Math.hypot(dx, dz));
-          const turn = clamp(Math.atan2(Math.sin(aimYaw - p.yaw), Math.cos(aimYaw - p.yaw)), -tick * D.turn, tick * D.turn);
+          const turn = clamp(Math.atan2(Math.sin(aimYaw - p.yaw), Math.cos(aimYaw - p.yaw)), -tick2 * D.turn, tick2 * D.turn);
           p.yaw += turn;
-          p.pitch += clamp(aimPitch - p.pitch, -tick * D.turn * 0.65, tick * D.turn * 0.65);
-          p.seen = (p.seen || 0) + tick;
+          p.pitch += clamp(aimPitch - p.pitch, -tick2 * D.turn * 0.65, tick2 * D.turn * 0.65);
+          p.seen = (p.seen || 0) + tick2;
           if (p.seen > D.react && near < D.see * 0.8 && Math.abs(Math.atan2(Math.sin(aimYaw - p.yaw), Math.cos(aimYaw - p.yaw))) < D.aim && Math.abs(aimPitch - p.pitch) < D.aim) fireNow = 1;
         } else {
           p.seen = 0;
           const dx = goal.x - p.x, dz = goal.z - p.z;
           aimYaw = Math.atan2(dx, dz);
-          p.yaw += clamp(Math.atan2(Math.sin(aimYaw - p.yaw), Math.cos(aimYaw - p.yaw)), -tick * 2.1, tick * 2.1);
+          p.yaw += clamp(Math.atan2(Math.sin(aimYaw - p.yaw), Math.cos(aimYaw - p.yaw)), -tick2 * 2.1, tick2 * 2.1);
           p.pitch *= 0.9;
         }
         const close = Math.hypot(goal.x - p.x, goal.z - p.z), front = Math.cos(p.yaw) * (goal.z - p.z) + Math.sin(p.yaw) * (goal.x - p.x);
@@ -1530,7 +1530,7 @@ const MP = [
     }
     function hostStep(dt) {
       var _a;
-      if (game.winner >= 0 || menuOpen) return;
+      if (game.winner >= 0 || menuOpen && !net.players.some((q) => q.id !== me && !net.isBot(q.id))) return;
       elapsed += dt;
       game.elapsed = elapsed;
       for (const p of ps.values()) {
@@ -2186,7 +2186,9 @@ const MP = [
       if (force) resultBars();
     }
     let loopTime = 0;
-    const stopLoop = loop((dt) => {
+    let lastTick = performance.now();
+    function tick(dt, render) {
+      lastTick = performance.now();
       loopTime += dt;
       sendClock += dt;
       snapClock += dt;
@@ -2226,8 +2228,14 @@ const MP = [
         updateZones();
         updatePanel(true);
       }
-      draw2(dt);
-    });
+      if (render) draw2(dt);
+    }
+    const stopLoop = loop((dt) => tick(dt, 1));
+    const bgTimer = setInterval(() => {
+      const t = performance.now();
+      if (t - lastTick < 150) return;
+      tick(Math.min(0.1, (t - lastTick) / 1e3), 0);
+    }, 60);
     function teamOutput() {
       const players = [...ps.values()];
       if (!players.some((p) => p.team === 0) || !players.some((p) => p.team === 1)) return;
@@ -2239,6 +2247,7 @@ const MP = [
     openMenu(true);
     function clean() {
       stopLoop();
+      clearInterval(bgTimer);
       inp.stop();
       off();
       offP();
