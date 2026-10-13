@@ -434,7 +434,7 @@ const MP = [
  @media(max-width:600px){.ddobjective{font-size:12px}.ddclock{font-size:15px}.ddtop{padding:6px 8px}.ddstatus,.ddcall{font-size:11px;padding:5px 7px}.ddcontrols .btn{padding:9px 11px;min-width:52px}}
  `;
     document.head.append(style);
-    const score = E("div", "sc"), frame = E("div", "ddframe"), hint = E("div", "hint d dhint", "AZERTY: Z/Q/S/D lopen · kijken met muis, slepen, A/E of pijltjes · linksklik/F schieten · rechtsklik/C richten · R herladen · 1–5 wapens · G granaat · spatie sprint · Esc/⚙ menu · H heal · V help · X opgeven · v7");
+    const score = E("div", "sc"), frame = E("div", "ddframe"), hint = E("div", "hint d dhint", "AZERTY: Z/Q/S/D lopen · kijken met muis, slepen, A/E of pijltjes · linksklik/F schieten · rechtsklik/C richten · R herladen · 1–5 wapens · G granaat · spatie sprint · Esc/⚙ menu · H heal · V help · X opgeven · v8");
     st.prepend(score);
     st.append(frame, hint);
     const T = three(frame, W, H, { fov: 74, far: 390 }), S = T.s, cam = T.cam, c = T.c, r = T.r;
@@ -957,7 +957,7 @@ const MP = [
         botDifficulty = (botDifficulty + 1) % 3;
         flashFeed("🎖 Moeilijkheid: " + DIFF[botDifficulty].n);
       } else if (k === "c") ads = ads ? 0 : 1;
-      else if (k === "h") cmdHeal = 1;
+      else if (k === "h") tryHeal();
       else if (k === "x") cmdGiveUp = 1;
       else if (k === "escape" || k === "m") openMenu(false);
     });
@@ -965,7 +965,7 @@ const MP = [
       if (e.target && e.target.tagName === "INPUT") return;
       const m = /^(Digit|Numpad)([1-6])$/.exec(e.code || "");
       if (m) {
-        if (m[2] === "6") cmdHeal = 1;
+        if (m[2] === "6") tryHeal();
         else cmdWeapon = +m[2] - 1;
         e.preventDefault();
       }
@@ -1090,7 +1090,23 @@ const MP = [
     };
     reloadBtn.onclick = () => cmdReload = 1;
     grenBtn.onclick = () => cmdGrenade = 1;
-    healBtn.onclick = () => cmdHeal = 1;
+    healBtn.onclick = () => tryHeal();
+    function tryHeal() {
+      const p = selected();
+      if (!p || !p.alive) return;
+      if (p.med <= 0) {
+        flashFeed("✚ Geen medkits — zoek een rood ✚ op de kaart");
+        return;
+      }
+      if (p.hp >= 100) {
+        flashFeed("❤ Je leven is al vol");
+        return;
+      }
+      if (p.healT > 0) return;
+      cmdHeal = 1;
+      flashFeed("✚ Healen… +60 ❤");
+      sfx("hit");
+    }
     hold(helpBtn, () => reviveTouch = 1, () => reviveTouch = 0);
     const onWheel = (e) => {
       if (menuOpen) return;
@@ -1258,7 +1274,6 @@ const MP = [
         amount -= a;
       }
       p.hp = Math.max(0, Math.round(p.hp - amount));
-      p.healT = 0;
       if (p.hp === 0) {
         p.alive = 0;
         p.down = 1;
@@ -1279,7 +1294,8 @@ const MP = [
     function startHeal(p) {
       if (!p.alive || p.med <= 0 || p.hp >= 100 || p.healT > 0) return;
       p.med--;
-      p.healT = 1.3;
+      p.healT = 1;
+      p.healLeft = 60;
     }
     function giveUp(p) {
       if (p.alive || !p.down) return;
@@ -1372,10 +1388,15 @@ const MP = [
         return;
       }
       if (p.healT > 0) {
-        p.healT -= dt;
+        const step = Math.min(p.healT, dt);
+        p.healT -= step;
+        const amt = p.healT <= 0 ? p.healLeft || 0 : Math.min(p.healLeft || 0, 60 * step);
+        p.healLeft = (p.healLeft || 0) - amt;
+        if (p.alive) p.hp = Math.min(100, p.hp + amt);
         if (p.healT <= 0) {
           p.healT = 0;
-          p.hp = Math.min(100, p.hp + 60);
+          p.healLeft = 0;
+          p.hp = Math.round(p.hp);
         }
       }
       if (!p.alive) {
@@ -1600,7 +1621,7 @@ const MP = [
       const players = net.players.map((n) => {
         const p = ps.get(n.id);
         if (!p) return [];
-        return [Math.round(p.x * 10), Math.round(p.z * 10), Math.round(p.yaw * 1e3), Math.round(p.pitch * 1e3), Math.round(p.hp), p.weapon, ...p.ammo, ...p.reserve, p.alive ? 1 : 0, Math.round(p.respawn * 10), p.kills, p.deaths, p.team, Math.round(p.inv * 10), Math.round(p.landing * 10), p.cp, Math.round(p.armor), p.med, p.down ? 1 : 0, Math.round(p.rev * 100), Math.round(p.healT * 10)];
+        return [Math.round(p.x * 10), Math.round(p.z * 10), Math.round(p.yaw * 1e3), Math.round(p.pitch * 1e3), Math.ceil(p.hp), p.weapon, ...p.ammo, ...p.reserve, p.alive ? 1 : 0, Math.round(p.respawn * 10), p.kills, p.deaths, p.team, Math.round(p.inv * 10), Math.round(p.landing * 10), p.cp, Math.round(p.armor), p.med, p.down ? 1 : 0, Math.round(p.rev * 100), Math.round(p.healT * 10)];
       });
       return { k: "s", p: players, cp: game.cp, pr: game.prog.map((x) => Math.round(x * 1e3)), tm: Math.round(game.time * 10), el: Math.round(elapsed * 10), win: game.winner, gr: game.grenades.map((g) => [g.id, Math.round(g.x * 10), Math.round(g.y * 10), Math.round(g.z * 10), Math.round(g.vx * 10), Math.round(g.vy * 10), Math.round(g.vz * 10), g.team, net.players.findIndex((p) => p.id === g.owner), Math.round(g.ttl * 10)]), tr: game.traces.splice(0, 12), kf: game.feed.splice(0, 8), df: botDifficulty, pk: PICK.map((k) => k.t > 0 ? 0 : 1).join("") };
     }
@@ -1638,6 +1659,16 @@ const MP = [
             setTimeout(() => hurtEl.style.opacity = 0, 600);
           }
           wasAlive = v[16];
+          if ((v[25] || 0) > (p.med || 0) && v[16]) flashFeed("✚ Medkit opgeraapt (" + v[25] + "/3)");
+          if ((v[24] || 0) > (p.armor || 0) + 20) flashFeed("🛡 Vest aangetrokken");
+          if (v[4] > lastHp + 4 && v[16]) {
+            hurtEl.style.boxShadow = "inset 0 0 110px 40px #22c55e88";
+            hurtEl.style.opacity = 0.8;
+            setTimeout(() => {
+              hurtEl.style.opacity = 0;
+              setTimeout(() => hurtEl.style.boxShadow = "", 300);
+            }, 250);
+          }
           if (v[4] < lastHp && v[16]) {
             hurtEl.style.opacity = clamp((lastHp - v[4]) / 40, 0.35, 1);
             setTimeout(() => hurtEl.style.opacity = 0, 180);
@@ -1667,7 +1698,7 @@ const MP = [
         p.med = v[25] || 0;
         p.down = v[26] || 0;
         p.rev = (v[27] || 0) / 100;
-        p.healT = (v[28] || 0) / 10;
+        if (!net.isHost) p.healT = (v[28] || 0) / 10;
       });
       game.grenades = (d.gr || []).map((g) => {
         var _a;
@@ -1995,7 +2026,7 @@ const MP = [
       d.onpointerdown = (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (i === 5) cmdHeal = 1;
+        if (i === 5) tryHeal();
         else cmdWeapon = i;
       };
       slotsEl.append(d);
@@ -2133,8 +2164,8 @@ const MP = [
           prog = best2.rev;
         } else if (p.healT > 0) {
           pr = "✚ Verbinden…";
-          prog = 1 - p.healT / 1.3;
-        } else if (p.hp < 60 && p.med > 0) pr = "✚ Druk H (of 6) om te healen · " + p.med + " medkit" + (p.med > 1 ? "s" : "");
+          prog = 1 - p.healT;
+        } else if (p.hp < 100 && p.med > 0) pr = "✚ Druk H (of 6) om te healen · " + p.med + " medkit" + (p.med > 1 ? "s" : "");
       }
       promptEl.style.display = pr ? "block" : "none";
       if (pr) {
