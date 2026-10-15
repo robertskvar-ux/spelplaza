@@ -18554,7 +18554,7 @@ const NET = {
     this._status("connecting", "Rechtstreekse verbinding lukt niet, omweg via doorgeefserver…");
     mqConnectAll({ will: { topic: MQ_T + code + "/h", payload: JSON.stringify({ f: id, t: "bye" }), qos: 0, retain: false } }).then((cls) => {
       if (!cls.length) {
-        if (this.state === "connecting") this._status("error", "Geen verbinding met de kamer (ook de doorgeefserver lukt niet). Probeer opnieuw.");
+        if (this.state === "connecting") this._status("connecting", "Verbinden met kamer " + code + "…");
         return;
       }
       const drop = (list) => list.forEach((cl) => {
@@ -18807,8 +18807,12 @@ const NET = {
     }
     if (m.k === "hello") {
       if (this.players.length >= 8) {
-        c.send({ k: "full" });
-        return;
+        const bot = [...this.players].reverse().find((p) => p.bot);
+        if (!bot) {
+          c.send({ k: "full" });
+          return;
+        }
+        this.players = this.players.filter((p) => p.id !== bot.id);
       }
       const name = String(m.name || "Speler").slice(0, 16);
       const av = AVATARS.includes(m.av) ? m.av : AVATARS[R(AVATARS.length)];
@@ -19334,9 +19338,10 @@ function mpStart() {
       }
       l2.innerHTML = "";
       rows.forEach((r) => {
-        const full = r.total >= 8;
+        const full = r.people >= 8;
         const row = E("div", "sugr", `<span><span class="pav s" style="--c:${esc(r.col || "#888")}">${esc(r.av)}</span> <b>${esc(r.host)}</b> <span class="mu">· ${r.people} speler${r.people == 1 ? "" : "s"}${r.total > r.people ? " + " + (r.total - r.people) + " 🤖" : ""} · ${r.game ? "speelt " + esc(r.game) : "in de wachtkamer"}</span></span>`);
         const go = E("button", "btn", full ? "Vol" : "Meedoen");
+        if (r.game && !full) go.textContent = "Meedoen (spel bezig)";
         go.disabled = full;
         go.onclick = async () => {
           go.disabled = true;
