@@ -393,6 +393,8 @@ const MP = [
     const GW = (p, i) => p && p.cls === 2 && i === 0 ? SNIPER : GUN[i];
     const canUse = (p, i) => CLS[p && p.cls || 0].w.includes(i);
     const maxHp = (p) => CLS[p && p.cls || 0].hp;
+    const MODES = [{ n: "Aanval", e: "🏖️", d: "Verover 4 punten van strand tot stad" }, { n: "Teamgevecht", e: "⚔️", d: "Eerste team tot 40 treffers wint" }, { n: "Vlag veroveren", e: "🚩", d: "Steel de vlag en breng hem naar je basis (3×)" }, { n: "Zombies", e: "🧟", d: "Overleef samen 10 golven zombies" }];
+    const BASE = [{ x: 0, z: 150 }, { x: 0, z: 250 }], TDM_GOAL = 40, CTF_GOAL = 3, Z_WAVES = 10;
     const DIFF = [{ n: "Rekruut", d: "trage, slordige bots", spread: 0.15, turn: 1.4, aim: 0.22, dmg: 0.5, see: 50, think: 0.34, react: 1.1 }, { n: "Soldaat", d: "eerlijk gevecht", spread: 0.065, turn: 2.4, aim: 0.14, dmg: 0.8, see: 78, think: 0.24, react: 0.6 }, { n: "Veteraan", d: "snel en dodelijk", spread: 0.022, turn: 4.2, aim: 0.08, dmg: 1.1, see: 100, think: 0.14, react: 0.28 }];
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v)), smooth = (t) => t * t * (3 - 2 * t);
     const ground = (z) => {
@@ -460,7 +462,7 @@ const MP = [
  @media(max-width:600px){.ddobjective{font-size:12px}.ddclock{font-size:15px}.ddtop{padding:6px 8px}.ddstatus,.ddcall{font-size:11px;padding:5px 7px}.ddcontrols .btn{padding:9px 11px;min-width:52px}}
  `;
     document.head.append(style);
-    const score = E("div", "sc"), frame = E("div", "ddframe"), hint = E("div", "hint d dhint", "AZERTY: Z/Q/S/D lopen · kijken met muis, slepen, A/E of pijltjes · linksklik/F schieten · rechtsklik/C richten · R herladen · 1–5 wapens · G granaat · spatie springen · W hurken · Shift sprinten · Esc/⚙ menu · H heal · V help · X opgeven · Tab score · B zandzak · v12");
+    const score = E("div", "sc"), frame = E("div", "ddframe"), hint = E("div", "hint d dhint", "AZERTY: Z/Q/S/D lopen · kijken met muis, slepen, A/E of pijltjes · linksklik/F schieten · rechtsklik/C richten · R herladen · 1–5 wapens · G granaat · spatie springen · W hurken · Shift sprinten · Esc/⚙ menu · H heal · V help · X opgeven · Tab score · B zandzak · v13");
     st.prepend(score);
     st.append(frame, hint);
     const T = three(frame, W, H, { fov: 74, far: 390 }), S = T.s, cam = T.cam, c = T.c, r = T.r;
@@ -778,6 +780,38 @@ const MP = [
       g.add(ring);
       PICK.push({ type, x, z, t: 0, g, box, ic });
     });
+    const flagVis = [0, 1].map((t) => {
+      const g = new THREE.Group();
+      S.add(g);
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 3.2, 6), mat(14540253));
+      pole.position.y = 1.6;
+      g.add(pole);
+      const cloth = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.8, 0.06), mat(TC[t], 0.6, 0, t ? 4198416 : 1058890));
+      cloth.position.set(0.68, 2.75, 0);
+      g.add(cloth);
+      const base = new THREE.Mesh(new THREE.RingGeometry(3.2, 3.8, 30), new THREE.MeshBasicMaterial({ color: TC[t], transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide }));
+      base.rotation.x = -Math.PI / 2;
+      S.add(base);
+      g.visible = false;
+      base.visible = false;
+      return { g, base, cloth };
+    });
+    const zMats = { skin: mat(8362842), shirt: mat(5065276), pants: mat(3751983) };
+    function createZombie() {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(unitG, zMats.shirt);
+      body.position.y = 0.8;
+      const head = new THREE.Mesh(headG, zMats.skin);
+      head.position.y = 1.55;
+      const a1 = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.7), zMats.skin);
+      a1.position.set(0.3, 1.2, 0.38);
+      const a2 = a1.clone();
+      a2.position.x = -0.3;
+      g.add(body, head, a1, a2);
+      S.add(g);
+      return g;
+    }
+    const zombieVis = /* @__PURE__ */ new Map();
     const cover = [];
     block.forEach((b) => {
       for (const s of [-1, 1]) {
@@ -922,7 +956,7 @@ const MP = [
     st.append(controls);
     const [fireBtn, cycleBtn, reloadBtn, grenBtn, adsBtn, healBtn, helpBtn, jumpBtn, crouchBtn, scoreBtn, bagBtn] = controls.querySelectorAll("button");
     const me = net.me.id, ps = /* @__PURE__ */ new Map();
-    let teamCounts = [0, 0], localYaw = 0, localPitch = 0, joyX = 0, joyY = 0, fireTouch = 0, lookId = -1, lookX = 0, lookY = 0, cmdReload = 0, cmdGrenade = 0, cmdWeapon = -1, sendClock = 0, snapClock = 0, uiClock = 0, elapsed = 0, terminal = 0, reported = 0, shotTraces = [], mouseHeld = 0, wallSeq = 0, cmdBag = 0, myCls = 0, jumpQ = 0, crouchTouch = 0, camCr = 0, cmdHeal = 0, cmdGiveUp = 0, reviveTouch = 0, deathT = 0, wasAlive = 1, heartT = 0, lastDown = 0, botDifficulty = 1, ads = 0, menuOpen = 0, camKick = 0, gunKick = 0, flashT = 0, localCool = 0, lastHp = 100, hitT = 0, sens = 1, invY = false;
+    let teamCounts = [0, 0], localYaw = 0, localPitch = 0, joyX = 0, joyY = 0, fireTouch = 0, lookId = -1, lookX = 0, lookY = 0, cmdReload = 0, cmdGrenade = 0, cmdWeapon = -1, sendClock = 0, snapClock = 0, uiClock = 0, elapsed = 0, terminal = 0, reported = 0, shotTraces = [], mouseHeld = 0, selMode = 0, started = 0, wallSeq = 0, cmdBag = 0, myCls = 0, jumpQ = 0, crouchTouch = 0, camCr = 0, cmdHeal = 0, cmdGiveUp = 0, reviveTouch = 0, deathT = 0, wasAlive = 1, heartT = 0, lastDown = 0, botDifficulty = 1, ads = 0, menuOpen = 0, camKick = 0, gunKick = 0, flashT = 0, localCool = 0, lastHp = 100, hitT = 0, sens = 1, invY = false;
     try {
       const sv = JSON.parse(localStorage.getItem("ddset") || "{}");
       if (+sv.sens > 0) sens = +sv.sens;
@@ -930,8 +964,23 @@ const MP = [
       myCls = clamp(+sv.cls | 0, 0, 4);
     } catch (e) {
     }
-    const game = { walls: [], cp: 0, prog: [0, 0, 0, 0], time: 600, elapsed: 0, winner: -1, grenades: [], scores: [0, 0], traces: [], feed: [] };
+    const game = { mode: 0, flags: [], caps: [0, 0], zombies: [], wave: 0, zLeft: 0, zBreak: 0, zSpawnT: 0, zk: 0, zSeq: 0, walls: [], cp: 0, prog: [0, 0, 0, 0], time: 600, elapsed: 0, winner: -1, grenades: [], scores: [0, 0], traces: [], feed: [] };
     function spawn(team, index, first = true) {
+      if (game.mode === 1 || game.mode === 2) {
+        const B = BASE[team];
+        for (let k = 0; k < 20; k++) {
+          const x = B.x + (Math.random() - 0.5) * 26, z = B.z + (team ? 1 : -1) * (2 + Math.random() * 9);
+          if (!blocked(x, ground(z) + 0.9, z, 0.6)) return { x, z, landing: 0 };
+        }
+        return { x: B.x, z: B.z, landing: 0 };
+      }
+      if (game.mode === 3) {
+        for (let k = 0; k < 20; k++) {
+          const x = (index % 4 - 1.5) * 3 + (Math.random() - 0.5) * 2, z = 1 + Math.random() * 4;
+          if (!blocked(x, ground(z) + 0.9, z, 0.6)) return { x, z, landing: 0 };
+        }
+        return { x: 0, z: 2, landing: 0 };
+      }
       if (team === 0) {
         const lane = index % 4 - 1.5, bz = game.cp > 0 ? CP[game.cp - 1].z - 6 : -2;
         return { x: lane * 3.2 + (Math.random() - 0.5), z: bz + Math.random() * 3, landing: 0 };
@@ -944,7 +993,7 @@ const MP = [
       return { x: (index % 4 - 1.5) * 4, z: Math.min(264, cp.z + 30), landing: 0 };
     }
     function addPlayer(p, index) {
-      const team = teamCounts[0] <= teamCounts[1] ? 0 : 1;
+      const team = game.mode === 3 ? 0 : teamCounts[0] <= teamCounts[1] ? 0 : 1;
       teamCounts[team]++;
       const at = spawn(team, index, true);
       const q = { revs: 0, id: p.id, team, x: at.x, z: at.z, yaw: team ? Math.PI : 0, pitch: 0, jy: 0, vy: 0, cr: 0, hp: 100, armor: 0, med: 1, down: 0, rev: 0, healT: 0, alive: 1, respawn: 0, inv: 2, landing: at.landing, weapon: 0, ammo: GUN.map((w) => w.cap), reserve: GUN.map((w) => w.res), reload: 0, reloadWeapon: 0, cool: 0, grenadeCool: 0, kills: 0, deaths: 0, cp: 0, input: { f: 0, s: 0, fire: 0 }, model: null };
@@ -1217,6 +1266,30 @@ const MP = [
       const card2 = E("div", "ddcard");
       m.append(card2);
       card2.innerHTML = "<h3>🪖 D-DAY</h3><p>Aanvallers veroveren 4 punten van strand tot stad · verdedigers houden stand.</p>";
+      const ml = E("div", "ddrow", '<b>Spelmodus</b><span class="mu" style="font-size:11px">' + (net.isHost ? "" : "kiest de host") + "</span>");
+      card2.append(ml);
+      const mg = E("div", "dddiff");
+      mg.style.gridTemplateColumns = "repeat(4,1fr)";
+      card2.append(mg);
+      const mdsc = E("p", "");
+      mdsc.style.cssText = "margin:-4px 0 8px;font-size:12px";
+      card2.append(mdsc);
+      const paintM = () => {
+        const cur2 = net.isHost ? selMode : game.mode;
+        mg.querySelectorAll("button").forEach((b, i) => b.classList.toggle("on", i === cur2));
+        mdsc.textContent = MODES[cur2].e + " " + MODES[cur2].n + ": " + MODES[cur2].d + (net.isHost && started && selMode !== game.mode ? " · start een nieuw spel" : "");
+      };
+      MODES.forEach((M, i) => {
+        const b = E("button", "", M.e + "<small>" + M.n + "</small>");
+        b.type = "button";
+        b.disabled = !net.isHost;
+        b.onclick = () => {
+          selMode = i;
+          paintM();
+        };
+        mg.append(b);
+      });
+      paintM();
       const dl = E("div", "ddrow", '<b>Moeilijkheid bots</b><span class="dddiffbadge"></span>');
       card2.append(dl);
       const dg = E("div", "dddiff");
@@ -1282,6 +1355,15 @@ const MP = [
         try {
           localStorage.setItem("ddset", JSON.stringify({ sens, inv: invY, cls: myCls }));
         } catch (e) {
+        }
+        if (net.isHost && (!started || selMode !== game.mode)) {
+          const sel = selMode;
+          started = 1;
+          if (sel !== game.mode || elapsed > 2) resetMatch(sel);
+          else {
+            game.mode = sel;
+            started = 1;
+          }
         }
         m.remove();
         menuOpen = 0;
@@ -1395,7 +1477,7 @@ const MP = [
         p.alive = 0;
         p.down = 1;
         p.rev = 0;
-        p.respawn = 30;
+        p.respawn = game.mode === 3 ? 999 : 30;
         p.deaths++;
         const attacker = ps.get(by);
         if (attacker) {
@@ -1435,7 +1517,7 @@ const MP = [
       p.healLeft = 60;
     }
     function giveUp(p) {
-      if (p.alive || !p.down) return;
+      if (p.alive || !p.down || game.mode === 3) return;
       p.down = 0;
       p.respawn = Math.min(p.respawn, 3);
     }
@@ -1478,14 +1560,38 @@ const MP = [
         bestHit = q;
         bestT = t;
       }
+      if (game.mode === 3 && p.team === 0) for (const q of game.zombies) {
+        if (!q.alive) continue;
+        const tx = q.x - ox, ty = ground(q.z) + 1.1 - oy, tz = q.z - oz, t = tx * dx + ty * dy + tz * dz;
+        if (t <= 0 || t >= bestT) continue;
+        const px = ox + dx * t, py = oy + dy * t, pz = oz + dz * t;
+        if (Math.hypot(q.x - px, ground(q.z) + 1.05 - py, q.z - pz) > 0.75) continue;
+        bestHit = q;
+        bestT = t;
+      }
       const end = [ox + dx * bestT, oy + dy * bestT, oz + dz * bestT];
       let flag = bestT < w.range - 0.01 ? 1 : 0;
       if (game.traces.length > 12) game.traces.shift();
       if (bestHit) {
-        const dist = Math.hypot(bestHit.x - p.x, bestHit.z - p.z), fall = clamp(1 - dist / (w.range * 1.4), 0.58, 1), head = end[1] > ground(bestHit.z) + (bestHit.jy || 0) + (bestHit.cr ? 0.95 : 1.43) ? 1.6 : 1, r2 = damage(bestHit, w.dmg * fall * head * (isB ? DIFF[botDifficulty].dmg : 1), p.id);
+        const dist = Math.hypot(bestHit.x - p.x, bestHit.z - p.z), fall = clamp(1 - dist / (w.range * 1.4), 0.58, 1), head = end[1] > ground(bestHit.z) + (bestHit.jy || 0) + (bestHit.cr ? 0.95 : 1.43) ? 1.6 : 1, r2 = bestHit.isZ ? hurtZombie(bestHit, w.dmg * fall * head, p) : damage(bestHit, w.dmg * fall * head * (isB ? DIFF[botDifficulty].dmg : 1), p.id);
         flag = r2 ? 1 + r2 + (head > 1 ? 2 : 0) : 1;
       }
       game.traces.push([net.players.findIndex((x) => x.id === p.id), Math.round(end[0] * 10), Math.round(end[1] * 10), Math.round(end[2] * 10), flag]);
+    }
+    function hurtZombie(z, amt, by) {
+      if (!z.alive) return 0;
+      z.hp -= amt;
+      if (z.hp <= 0) {
+        z.alive = 0;
+        z.deadT = 0;
+        game.zk++;
+        if (by) {
+          by.kills++;
+          game.scores[by.team]++;
+        }
+        return 2;
+      }
+      return 1;
     }
     function throwGrenade(p) {
       if (!canUse(p, 4)) return;
@@ -1504,6 +1610,11 @@ const MP = [
         if (p.team === g.team || !p.alive) continue;
         const d = Math.hypot(p.x - g.x, p.z - g.z), dy = Math.abs(ground(p.z) + 0.85 - g.y);
         if (d < 9 && dy < 8) damage(p, GUN[4].dmg * (1 - d / 10), g.owner);
+      }
+      if (game.mode === 3 && g.team === 0) for (const z of game.zombies) {
+        if (!z.alive) continue;
+        const d = Math.hypot(z.x - g.x, z.z - g.z);
+        if (d < 9) hurtZombie(z, GUN[4].dmg * 1.4 * (1 - d / 10), ps.get(g.owner));
       }
     }
     function updateAmmo(p, dt) {
@@ -1580,12 +1691,28 @@ const MP = [
       const dz = (Math.cos(p.yaw) * (a.f || 0) + Math.sin(p.yaw) * (a.s || 0)) * speed * dt * norm;
       const hy = 0.9 + (p.jy || 0), stuck = blocked(p.x, ground(p.z) + hy, p.z, 0.4);
       let nx = p.x + dx, nz = p.z + dz;
-      if (p.team === 0 && game.cp < 4) nz = Math.min(nz, CP[game.cp].z + 10);
+      if (game.mode === 0 && p.team === 0 && game.cp < 4) nz = Math.min(nz, CP[game.cp].z + 10);
       if (Math.abs(nx) < 77 && (stuck || !blocked(nx, ground(p.z) + hy, p.z, 0.4))) p.x = nx;
       if (nz > -96 && nz < 270 && (stuck || !blocked(p.x, ground(nz) + hy, nz, 0.4))) p.z = nz;
     }
     let botClock = 0;
     const botSent = /* @__PURE__ */ new Map();
+    function botGoal(p) {
+      const c2 = p.id.charCodeAt(1) || 0;
+      if (game.mode === 1) {
+        if (!p.roam || Math.hypot(p.roam.x - p.x, p.roam.z - p.z) < 5 || Math.random() < 4e-3) p.roam = { x: (Math.random() - 0.5) * 50, z: p.team ? 175 + Math.random() * 50 : 175 + Math.random() * 50 };
+        return p.roam;
+      }
+      if (game.mode === 2) {
+        const my = game.flags[p.team], en = game.flags[1 - p.team];
+        if (!my || !en) return BASE[p.team];
+        if (en.carrier === p.id) return { ...BASE[p.team], r: 1 };
+        if (my.carrier || !my.home) return { x: my.x, z: my.z, r: 1 };
+        if (c2 % 3 === 0) return { x: BASE[p.team].x + (c2 % 2 ? 6 : -6), z: BASE[p.team].z + (p.team ? -7 : 7) };
+        return { x: en.x, z: en.z, r: 1 };
+      }
+      return { x: (c2 % 5 - 2) * 3, z: 4 + c2 % 3 };
+    }
     function simBots(dt) {
       const D = DIFF[botDifficulty];
       botClock += dt;
@@ -1594,7 +1721,7 @@ const MP = [
       botClock = 0;
       for (const p of ps.values()) {
         if (!net.isBot(p.id) || !p.alive || p.landing > 0) continue;
-        const foes = [...ps.values()].filter((q) => q.alive && q.team !== p.team);
+        const foes = [...ps.values()].filter((q) => q.alive && q.team !== p.team).concat(game.mode === 3 ? game.zombies.filter((z) => z.alive) : []);
         let target = null, near = 1e6;
         for (const q of foes) {
           if (q.landing > 0) continue;
@@ -1604,8 +1731,15 @@ const MP = [
             near = d;
           }
         }
-        const cp = CP[Math.min(game.cp, 3)], guardZ = cp.z + (p.team ? 8 : -3);
-        let goal = { x: p.team ? clamp((p.x < 0 ? -1 : 1) * 12, -18, 18) : cp.x, z: guardZ };
+        let guardZ, goal;
+        if (game.mode === 0) {
+          const cp = CP[Math.min(game.cp, 3)];
+          guardZ = cp.z + (p.team ? 8 : -3);
+          goal = { x: p.team ? clamp((p.x < 0 ? -1 : 1) * 12, -18, 18) : cp.x, z: guardZ };
+        } else {
+          goal = botGoal(p);
+          guardZ = goal.z;
+        }
         if (target && near < 26) {
           let choice = null, cs = 1e9;
           for (const v of cover) {
@@ -1624,7 +1758,7 @@ const MP = [
           const dx = target.x - p.x, dz = target.z - p.z, l = Math.hypot(dx, dz) || 1, sd = p.id.charCodeAt(0) % 2 ? 1 : -1;
           goal = { x: clamp(target.x - dx / l * 16 + dz / l * 14 * sd, -70, 70), z: target.z - dz / l * 16 - dx / l * 14 * sd };
         }
-        let botRv = 0, botH = 0, reach = 5;
+        let botRv = 0, botH = 0, reach = goal.r || 5;
         if (!target || near > 30) {
           const dn = [...ps.values()].filter((q) => !q.alive && q.down && q.team === p.team).map((q) => [q, Math.hypot(q.x - p.x, q.z - p.z)]).filter((v) => v[1] < 35).sort((a, b) => a[1] - b[1])[0];
           if (dn) {
@@ -1783,12 +1917,209 @@ const MP = [
         }
       }
       game.grenades = game.grenades.filter((g) => g.ttl > 0);
-      capture(dt);
-      game.time -= dt;
-      if (game.cp < 4 && game.time <= 0) {
-        game.time = 0;
-        game.winner = 1;
+      if (game.mode === 0) {
+        capture(dt);
+        game.time -= dt;
+        if (game.cp < 4 && game.time <= 0) {
+          game.time = 0;
+          game.winner = 1;
+        }
+      } else if (game.mode === 1) {
+        game.time -= dt;
+        if (game.scores[0] >= TDM_GOAL) game.winner = 0;
+        else if (game.scores[1] >= TDM_GOAL) game.winner = 1;
+        else if (game.time <= 0) {
+          game.time = 0;
+          game.winner = game.scores[0] === game.scores[1] ? 2 : game.scores[0] > game.scores[1] ? 0 : 1;
+        }
+      } else if (game.mode === 2) {
+        game.time -= dt;
+        stepFlags(dt);
+        if (game.caps[0] >= CTF_GOAL) game.winner = 0;
+        else if (game.caps[1] >= CTF_GOAL) game.winner = 1;
+        else if (game.time <= 0) {
+          game.time = 0;
+          game.winner = game.caps[0] === game.caps[1] ? 2 : game.caps[0] > game.caps[1] ? 0 : 1;
+        }
+      } else stepZombies(dt);
+    }
+    function stepFlags(dt) {
+      game.flags.forEach((f, t) => {
+        if (f.carrier) {
+          const c2 = ps.get(f.carrier);
+          if (!c2 || !c2.alive) {
+            f.carrier = null;
+            f.home = 0;
+            f.dropT = 20;
+          } else {
+            f.x = c2.x;
+            f.z = c2.z;
+            const own = game.flags[c2.team];
+            if (own && own.home && Math.hypot(c2.x - BASE[c2.team].x, c2.z - BASE[c2.team].z) < 4) {
+              game.caps[c2.team]++;
+              c2.cp++;
+              f.carrier = null;
+              f.home = 1;
+              f.x = BASE[t].x;
+              f.z = BASE[t].z;
+              game.feed.push([net.players.findIndex((x) => x.id === c2.id), -2]);
+            }
+          }
+          return;
+        }
+        if (!f.home) {
+          f.dropT -= dt;
+          if (f.dropT <= 0) {
+            f.home = 1;
+            f.x = BASE[t].x;
+            f.z = BASE[t].z;
+          }
+        }
+        for (const p of ps.values()) {
+          if (!p.alive || Math.hypot(p.x - f.x, p.z - f.z) > 1.8) continue;
+          if (p.team !== t) {
+            if (!game.flags.some((o) => o.carrier === p.id)) {
+              f.carrier = p.id;
+              f.home = 0;
+              break;
+            }
+          } else if (!f.home) {
+            f.home = 1;
+            f.x = BASE[t].x;
+            f.z = BASE[t].z;
+            break;
+          }
+        }
+      });
+    }
+    function stepZombies(dt) {
+      const humans = [...ps.values()].filter((p) => p.team === 0);
+      if (game.zBreak > 0) {
+        game.zBreak -= dt;
+        game.time = game.zBreak;
+        if (game.zBreak <= 0) {
+          game.wave++;
+          game.zLeft = 4 + game.wave * 3;
+          game.zSpawnT = 0;
+          for (const p of humans) {
+            if (!p.alive) {
+              p.respawn = 0.01;
+            } else if (p.hp < maxHp(p)) p.hp = Math.min(maxHp(p), p.hp + 40);
+          }
+        }
+        return;
       }
+      if (game.zLeft > 0 && game.zombies.filter((z) => z.alive).length < 22) {
+        game.zSpawnT -= dt;
+        if (game.zSpawnT <= 0) {
+          game.zSpawnT = Math.max(0.25, 0.8 - game.wave * 0.05);
+          game.zLeft--;
+          const side = Math.random();
+          let x, z;
+          if (side < 0.5) {
+            x = (Math.random() - 0.5) * 110;
+            z = 66 + Math.random() * 6;
+          } else {
+            x = (side < 0.75 ? -1 : 1) * (68 + Math.random() * 6);
+            z = 8 + Math.random() * 44;
+          }
+          game.zombies.push({ id: ++game.zSeq, x, z, yaw: 0, hp: 55 + game.wave * 14, alive: 1, atk: 0, isZ: true, jy: 0, cr: 0, landing: 0, inv: 0, team: 1, sp: Math.min(6.4, 2.6 + game.wave * 0.33) * (0.85 + Math.random() * 0.3) });
+        }
+      }
+      for (const z of game.zombies) {
+        if (!z.alive) {
+          z.deadT = (z.deadT || 0) + dt;
+          continue;
+        }
+        let tgt = null, bd = 1e9;
+        for (const p of humans) {
+          if (!p.alive) continue;
+          const d = Math.hypot(p.x - z.x, p.z - z.z);
+          if (d < bd) {
+            bd = d;
+            tgt = p;
+          }
+        }
+        if (!tgt) continue;
+        const dx = tgt.x - z.x, dz = tgt.z - z.z, l = Math.hypot(dx, dz) || 1;
+        z.yaw = Math.atan2(dx, dz);
+        z.atk -= dt;
+        if (l < 1.35) {
+          if (z.atk <= 0) {
+            z.atk = 0.9;
+            damage(tgt, 9 + game.wave * 1.6, null);
+          }
+          continue;
+        }
+        const st2 = z.sp * dt, nx = z.x + dx / l * st2, nz = z.z + dz / l * st2;
+        if (!blocked(nx, ground(z.z) + 0.9, z.z, 0.35)) z.x = nx;
+        else z.x += (z.id % 2 ? 1 : -1) * st2 * 0.7;
+        if (!blocked(z.x, ground(nz) + 0.9, nz, 0.35)) z.z = nz;
+        else z.z += (z.id % 3 ? 1 : -1) * st2 * 0.7;
+      }
+      game.zombies = game.zombies.filter((z) => z.alive || z.deadT < 2);
+      if (!humans.some((p) => p.alive)) {
+        game.winner = 1;
+        return;
+      }
+      if (game.zLeft <= 0 && !game.zombies.some((z) => z.alive)) {
+        if (game.wave >= Z_WAVES) {
+          game.winner = 0;
+          return;
+        }
+        game.zBreak = game.wave ? 9 : 6;
+      }
+      game.time = 0;
+    }
+    function resetMatch(mode) {
+      game.mode = mode;
+      game.cp = 0;
+      game.prog = [0, 0, 0, 0];
+      game.time = [600, 480, 600, 0][mode];
+      game.winner = -1;
+      game.grenades = [];
+      game.scores = [0, 0];
+      game.traces = [];
+      game.feed = [];
+      game.walls = [];
+      game.caps = [0, 0];
+      game.flags = BASE.map((b) => ({ x: b.x, z: b.z, carrier: null, home: 1, dropT: 0 }));
+      game.zombies = [];
+      game.wave = 0;
+      game.zLeft = 0;
+      game.zBreak = mode === 3 ? 6 : 0;
+      game.zk = 0;
+      elapsed = 0;
+      reported = 0;
+      terminal = 0;
+      teamCounts = [0, 0];
+      net.players.forEach((n, i) => {
+        const p = ps.get(n.id);
+        if (!p) return;
+        const human = !net.isBot(n.id);
+        p.team = mode === 3 ? 0 : teamCounts[0] <= teamCounts[1] ? 0 : 1;
+        teamCounts[p.team]++;
+        const at = spawn(p.team, i, true);
+        p.x = at.x;
+        p.z = at.z;
+        p.yaw = mode === 0 || mode === 3 ? p.team ? Math.PI : 0 : p.team ? Math.PI : 0;
+        p.pitch = 0;
+        p.alive = 1;
+        p.down = 0;
+        p.rev = 0;
+        p.respawn = 0;
+        p.inv = 2;
+        p.armor = 0;
+        p.med = 1;
+        p.kills = 0;
+        p.deaths = 0;
+        p.revs = 0;
+        p.cp = 0;
+        p.jy = 0;
+        p.vy = 0;
+        applyClass(p);
+      });
+      for (const k of PICK) k.t = 0;
     }
     function pack() {
       const players = net.players.map((n) => {
@@ -1796,7 +2127,7 @@ const MP = [
         if (!p) return [];
         return [Math.round(p.x * 10), Math.round(p.z * 10), Math.round(p.yaw * 1e3), Math.round(p.pitch * 1e3), Math.ceil(p.hp), p.weapon, ...p.ammo, ...p.reserve, p.alive ? 1 : 0, Math.round(p.respawn * 10), p.kills, p.deaths, p.team, Math.round(p.inv * 10), Math.round(p.landing * 10), p.cp, Math.round(p.armor), p.med, p.down ? 1 : 0, Math.round(p.rev * 100), Math.round(p.healT * 10), Math.round((p.jy || 0) * 100), p.cr ? 1 : 0, p.revs || 0, p.cls || 0, p.bags || 0];
       });
-      return { k: "s", p: players, cp: game.cp, pr: game.prog.map((x) => Math.round(x * 1e3)), tm: Math.round(game.time * 10), el: Math.round(elapsed * 10), win: game.winner, gr: game.grenades.map((g) => [g.id, Math.round(g.x * 10), Math.round(g.y * 10), Math.round(g.z * 10), Math.round(g.vx * 10), Math.round(g.vy * 10), Math.round(g.vz * 10), g.team, net.players.findIndex((p) => p.id === g.owner), Math.round(g.ttl * 10)]), tr: game.traces.splice(0, 12), kf: game.feed.splice(0, 8), df: botDifficulty, wl: game.walls.map((w) => [w.id, Math.round(w.x * 10), Math.round(w.z * 10), Math.round(w.w * 10), Math.round(w.d * 10)]), pk: PICK.map((k) => k.t > 0 ? 0 : 1).join("") };
+      return { k: "s", p: players, cp: game.cp, pr: game.prog.map((x) => Math.round(x * 1e3)), tm: Math.round(game.time * 10), el: Math.round(elapsed * 10), win: game.winner, gr: game.grenades.map((g) => [g.id, Math.round(g.x * 10), Math.round(g.y * 10), Math.round(g.z * 10), Math.round(g.vx * 10), Math.round(g.vy * 10), Math.round(g.vz * 10), g.team, net.players.findIndex((p) => p.id === g.owner), Math.round(g.ttl * 10)]), tr: game.traces.splice(0, 12), kf: game.feed.splice(0, 8), df: botDifficulty, wl: game.walls.map((w) => [w.id, Math.round(w.x * 10), Math.round(w.z * 10), Math.round(w.w * 10), Math.round(w.d * 10)]), pk: PICK.map((k) => k.t > 0 ? 0 : 1).join(""), md: game.mode, cs: game.caps, sc: game.scores, fl: game.flags.map((f) => [Math.round(f.x * 10), Math.round(f.z * 10), f.carrier ? net.players.findIndex((x) => x.id === f.carrier) : -1, f.home ? 1 : 0]), zb: game.zombies.map((z) => [z.id, Math.round(z.x * 10), Math.round(z.z * 10), Math.round(z.yaw * 100), z.alive ? 1 : 0]), wv: [game.wave, game.zLeft + game.zombies.filter((z) => z.alive).length, game.zk] };
     }
     function applySnap(d) {
       if (!d || d.k !== "s") return;
@@ -1884,6 +2215,16 @@ const MP = [
         var _a;
         return { id: g[0], x: g[1] / 10, y: g[2] / 10, z: g[3] / 10, vx: g[4] / 10, vy: g[5] / 10, vz: g[6] / 10, team: g[7], owner: ((_a = net.players[g[8]]) == null ? void 0 : _a.id) || "", ttl: g[9] / 10 };
       });
+      if (Number.isInteger(d.md)) game.mode = d.md;
+      if (Array.isArray(d.cs)) game.caps = d.cs;
+      if (Array.isArray(d.sc)) game.scores = d.sc;
+      if (Array.isArray(d.wv)) {
+        game.wave = d.wv[0];
+        game.zAlive = d.wv[1];
+        game.zk = d.wv[2];
+      }
+      if (Array.isArray(d.fl)) game.flags = d.fl.map((f, t) => ({ x: f[0] / 10, z: f[1] / 10, carrier: f[2] >= 0 && net.players[f[2]] ? net.players[f[2]].id : null, home: f[3] }));
+      if (!net.isHost && Array.isArray(d.zb)) game.zombies = d.zb.map((v) => ({ id: v[0], x: v[1] / 10, z: v[2] / 10, yaw: v[3] / 100, alive: v[4], isZ: true }));
       if (Number.isInteger(d.df)) botDifficulty = d.df;
       if (Array.isArray(d.wl)) syncWalls(d.wl);
       if (typeof d.pk === "string") PICK.forEach((k, i) => {
@@ -1907,9 +2248,17 @@ const MP = [
         }
       });
       (d.kf || []).forEach(([a, b]) => {
-        const A = net.players[a], B = net.players[b];
+        const A = net.players[a];
+        if (b === -2) {
+          if (A) {
+            flashFeed("🚩 " + (A.id === me ? "<b>Jij</b>" : esc2(A.name)) + " verovert de vlag!");
+            sfx("kill");
+          }
+          return;
+        }
+        const B = net.players[b];
         if (!B) return;
-        flashFeed((A ? A.id === me ? "<b>Jij</b>" : esc2(A.name) : "?") + " ✖ " + (B.id === me ? "<b>jij</b>" : esc2(B.name)));
+        flashFeed((A ? A.id === me ? "<b>Jij</b>" : esc2(A.name) : "🧟") + " ✖ " + (B.id === me ? "<b>jij</b>" : esc2(B.name)));
       });
       if (game.winner >= 0) reportResult();
     }
@@ -1940,8 +2289,23 @@ const MP = [
       reported = 1;
       terminal = 1;
       const scores = {};
-      for (const p of ps.values()) scores[p.id] = (p.team === game.winner ? 1e3 : 0) + p.kills * 10 + p.cp * 4;
-      net.result({ winner: null, scores, title: game.winner === 0 ? "🟦 De aanvallers veroveren de eindpositie!" : "🟥 De verdedigers houden stand!", text: game.winner === 0 ? "Vier controlepunten veroverd · Aanvallers winnen" : "De tijd is om · Verdedigers winnen", unit: " pt" });
+      for (const p of ps.values()) scores[p.id] = (p.team === game.winner ? 1e3 : 0) + p.kills * 10 + p.cp * 4 + (p.revs || 0) * 5;
+      const w = game.winner, m = game.mode;
+      let title, text;
+      if (m === 0) {
+        title = w === 0 ? "🟦 De aanvallers veroveren de eindpositie!" : "🟥 De verdedigers houden stand!";
+        text = w === 0 ? "Vier controlepunten veroverd · Aanvallers winnen" : "De tijd is om · Verdedigers winnen";
+      } else if (m === 1) {
+        title = w === 2 ? "🤝 Gelijkspel!" : (w === 0 ? "🟦 Blauw" : "🟥 Rood") + " wint het teamgevecht!";
+        text = game.scores[0] + " – " + game.scores[1] + " treffers";
+      } else if (m === 2) {
+        title = w === 2 ? "🤝 Gelijkspel!" : (w === 0 ? "🟦 Blauw" : "🟥 Rood") + " wint Vlag veroveren!";
+        text = game.caps[0] + " – " + game.caps[1] + " veroverde vlaggen";
+      } else {
+        title = w === 0 ? "🏆 Jullie hebben alle " + Z_WAVES + " golven overleefd!" : "🧟 De zombies hebben gewonnen…";
+        text = "Golf " + game.wave + " bereikt · " + game.zk + " zombies verslagen";
+      }
+      net.result({ winner: null, scores, title, text, unit: " pt" });
     }
     const off = net.on((d, from) => {
       if (!d || typeof d !== "object") return;
@@ -1973,7 +2337,12 @@ const MP = [
           var _a;
           return ((_a = ps.get(p.id)) == null ? void 0 : _a.team) === team;
         });
-        b.textContent = (team === 0 ? "🟦 " : "🟥 ") + TEAM[team] + " " + members.length + (members.some((p) => p.id === me) ? " · jij" : "");
+        if (game.mode === 3 && team === 1) {
+          b.textContent = "🧟 Zombies";
+          score.append(b);
+          continue;
+        }
+        b.textContent = (team === 0 ? "🟦 " : "🟥 ") + (game.mode === 3 ? "Overlevenden" : game.mode ? ["Blauw", "Rood"][team] : TEAM[team]) + " " + members.length + (members.some((p) => p.id === me) ? " · jij" : "");
         score.append(b);
       }
       const mid = E("span");
@@ -1991,8 +2360,14 @@ const MP = [
       for (const n of net.players) {
         const p = ps.get(n.id);
         if (!p) continue;
+        if (p.model && p.modelTeam !== p.team) {
+          S.remove(p.model);
+          p.model = null;
+          p.tagK = "";
+        }
         if (!p.model) {
           p.model = createAvatar({ ...n, team: p.team });
+          p.modelTeam = p.team;
         }
         p.model.visible = (p.alive || p.down) && n.id !== me;
         if (p.rx === void 0 || Math.hypot(p.x - p.rx, p.z - p.rz) > 6) {
@@ -2066,6 +2441,26 @@ const MP = [
         const head = p.model.children[1];
         if (head) head.material.color.set(p.team ? 12162937 : 13085320);
       }
+      {
+        const seen = /* @__PURE__ */ new Set();
+        for (const z of game.mode === 3 ? game.zombies : []) {
+          seen.add(z.id);
+          let v = zombieVis.get(z.id);
+          if (!v) {
+            v = { m: createZombie(), x: z.x, z: z.z };
+            zombieVis.set(z.id, v);
+          }
+          const k = Math.min(1, dt * 12);
+          v.x += (z.x - v.x) * k;
+          v.z += (z.z - v.z) * k;
+          v.m.position.set(v.x, ground(v.z) + (z.alive ? Math.abs(Math.sin(elapsed * 7 + z.id)) * 0.08 : 0.25), v.z);
+          v.m.rotation.set(z.alive ? 0.12 : -Math.PI / 2, z.yaw, 0, "YXZ");
+        }
+        for (const [id, v] of zombieVis) if (!seen.has(id)) {
+          S.remove(v.m);
+          zombieVis.delete(id);
+        }
+      }
       for (const k of PICK) {
         if (k.g.visible) {
           k.box.rotation.y += dt * 1.4;
@@ -2110,6 +2505,39 @@ const MP = [
       drawBoats();
     }
     function updateZones() {
+      zones.forEach((z) => z.g.visible = game.mode === 0);
+      flagVis.forEach((f, t) => {
+        var _a, _b, _c;
+        const on = game.mode === 2;
+        f.g.visible = on;
+        f.base.visible = on || game.mode === 1;
+        const F = game.flags[t];
+        if (on && F) {
+          const c2 = F.carrier && ps.get(F.carrier);
+          if (c2) {
+            f.g.position.set((_a = c2.rx) != null ? _a : c2.x, ground((_b = c2.rz) != null ? _b : c2.z) + (c2.jy || 0) + 1.2, (_c = c2.rz) != null ? _c : c2.z);
+          } else f.g.position.set(F.x, ground(F.z), F.z);
+        }
+        f.base.position.set(BASE[t].x, ground(BASE[t].z) + 0.06, BASE[t].z);
+      });
+      if (game.mode !== 0) {
+        const me_ = selected(), mine = me_ ? me_.team : 0;
+        if (game.mode === 1) {
+          objective.textContent = "⚔️ Teamgevecht · 🟦 " + game.scores[0] + " – " + game.scores[1] + " 🟥 · tot " + TDM_GOAL;
+          progress.style.width = Math.round(Math.max(...game.scores) / TDM_GOAL * 100) + "%";
+        } else if (game.mode === 2) {
+          const myF = game.flags[mine], enF = game.flags[1 - mine];
+          objective.textContent = "🚩 Vlag · 🟦 " + game.caps[0] + " – " + game.caps[1] + " 🟥" + (enF && enF.carrier === me ? " · breng de vlag naar je basis!" : myF && myF.carrier ? " · jullie vlag is gestolen!" : enF && enF.carrier ? " · bescherm je vlagdrager" : "");
+          progress.style.width = Math.round(Math.max(...game.caps) / CTF_GOAL * 100) + "%";
+        } else {
+          const left = net.isHost ? game.zLeft + game.zombies.filter((z) => z.alive).length : game.zAlive || 0;
+          objective.textContent = game.time > 0 && !left ? "🧟 Volgende golf (" + (game.wave + 1) + "/" + Z_WAVES + ") over " + Math.ceil(game.time) + " s" : "🧟 Golf " + game.wave + "/" + Z_WAVES + " · nog " + left + " zombies";
+          progress.style.width = Math.round(game.wave / Z_WAVES * 100) + "%";
+        }
+        const sec3 = Math.max(0, Math.ceil(game.time)), mm = String(Math.floor(sec3 / 60)).padStart(2, "0"), ss = String(sec3 % 60).padStart(2, "0");
+        clock.textContent = game.mode === 3 ? "🧟 " + game.zk : "⏱ " + mm + ":" + ss;
+        return;
+      }
       zones.forEach((z, i) => {
         const done = i < game.cp, active = i === game.cp;
         const col = done ? 6936725 : active ? 16768117 : 10266274;
@@ -2264,7 +2692,22 @@ const MP = [
         if (Math.abs(b.z - p.z) > 75 || Math.abs(b.x - p.x) > 75) continue;
         mapX.fillRect(tx(b.x) - b.w / 2 * sc, ty(b.z) - b.d / 2 * sc, b.w * sc, b.d * sc);
       }
-      CP.forEach((q, i) => {
+      if (game.mode === 1 || game.mode === 2) BASE.forEach((b, t) => {
+        mapX.strokeStyle = t ? "#ef6558" : "#4ca7ef";
+        mapX.lineWidth = 2;
+        mapX.strokeRect(tx(b.x) - 5, ty(b.z) - 5, 10, 10);
+      });
+      if (game.mode === 2) game.flags.forEach((f, t) => {
+        mapX.fillStyle = t ? "#ef6558" : "#4ca7ef";
+        mapX.font = "bold 12px system-ui";
+        mapX.textAlign = "center";
+        mapX.fillText("⚑", tx(f.x), ty(f.z) + 4);
+      });
+      if (game.mode === 3) {
+        mapX.fillStyle = "#8fd16a";
+        for (const z of game.zombies) if (z.alive) mapX.fillRect(tx(z.x) - 1.5, ty(z.z) - 1.5, 3, 3);
+      }
+      if (game.mode === 0) CP.forEach((q, i) => {
         mapX.strokeStyle = i < game.cp ? "#69d895" : i === game.cp ? "#ffd166" : "#aaa";
         mapX.lineWidth = 2;
         mapX.beginPath();
@@ -2309,7 +2752,7 @@ const MP = [
       mapX.fillStyle = "#fff";
       mapX.font = "bold 9px system-ui";
       mapX.textAlign = "center";
-      mapX.fillText("▲ vijand", cx, 11);
+      mapX.fillText(game.mode === 3 ? "▲ zombies" : "▲ vijand", cx, 11);
     }
     function updatePanel(force) {
       const p = selected();
@@ -2395,7 +2838,7 @@ const MP = [
         var _a;
         return ((_a = ps.get(q.id)) == null ? void 0 : _a.team) !== p.team;
       }).length;
-      call.textContent = "🎖 " + DIFF[botDifficulty].n + " · " + (isContest ? "⚔️ Punt betwist" : "👥 " + own + " vs " + foe) + " · " + [...ps.values()].filter((q) => q.team === p.team).reduce((n, q) => n + q.kills, 0) + "–" + [...ps.values()].filter((q) => q.team !== p.team).reduce((n, q) => n + q.kills, 0);
+      call.textContent = MODES[game.mode].e + " " + MODES[game.mode].n + " · 🎖 " + DIFF[botDifficulty].n + " · " + (isContest ? "⚔️ Punt betwist" : "👥 " + own + " vs " + foe) + " · " + [...ps.values()].filter((q) => q.team === p.team).reduce((n, q) => n + q.kills, 0) + "–" + [...ps.values()].filter((q) => q.team !== p.team).reduce((n, q) => n + q.kills, 0);
       if (force) resultBars();
     }
     let loopTime = 0;
