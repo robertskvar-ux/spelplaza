@@ -2647,6 +2647,10 @@ const MP = [
               setTimeout(() => hurtEl.style.boxShadow = "", 300);
             }, 250);
           }
+          if (p.kills != null && v[18] > p.kills && v[18] - p.kills < 5) {
+            for (let k = p.kills; k < v[18]; k++) STATS.bump("ddKill", "dday");
+          }
+          if (p.revs != null && (v[31] || 0) > p.revs && (v[31] || 0) - p.revs < 5) STATS.bump("ddRevive", "dday");
           if (v[4] < lastHp && v[16]) {
             hurtEl.style.opacity = clamp((lastHp - v[4]) / 40, 0.35, 1);
             setTimeout(() => hurtEl.style.opacity = 0, 180);
@@ -2904,7 +2908,7 @@ const MP = [
             x.textAlign = "center";
             x.lineWidth = 5;
             x.strokeStyle = "#000a";
-            const nm = (p.alive ? "🟦 " : "✚ ") + String(n.name || "").slice(0, 14);
+            const nm = (p.alive ? "🟦 " : "✚ ") + String(n.name || "").slice(0, 13) + (n.lvl ? " " + rankOf(n.lvl).e + n.lvl : "");
             if (p.team) x.fillStyle = "#ffd0c8";
             else x.fillStyle = "#cfe8ff";
             x.strokeText(p.alive ? nm : "✚ HELP " + String(n.name || "").slice(0, 10), 128, 26);
@@ -18227,6 +18231,44 @@ const PROFILE = {
     LS("sp_profile", JSON.stringify({ name: String(p.name || "").slice(0, 16), av: p.av, col: p.col }));
   }
 };
+const XP_FOR = { played: 5, mpPlayed: 10, mpDone: 15, mpWon: 40, ddKill: 2, ddRevive: 3 };
+const RANKS = [[1, "Rekruut", "🔰"], [3, "Soldaat", "🪖"], [5, "Korporaal", "🎖️"], [8, "Sergeant", "⭐"], [12, "Luitenant", "🌟"], [16, "Kapitein", "🏅"], [20, "Majoor", "🥉"], [25, "Kolonel", "🥈"], [30, "Generaal", "🥇"], [40, "Maarschalk", "👑"]];
+const lvlOf = (xp) => Math.floor((Math.sqrt(1 + 8 * Math.max(0, xp) / 100) - 1) / 2) + 1;
+const xpAt = (l) => 100 * (l - 1) * l / 2;
+const rankOf = (l) => {
+  let r = RANKS[0];
+  for (const x of RANKS) if (l >= x[0]) r = x;
+  return { n: r[1], e: r[2] };
+};
+function xpToast(t, big) {
+  try {
+    let w = document.getElementById("xpt");
+    if (!w) {
+      w = document.createElement("div");
+      w.id = "xpt";
+      w.style.cssText = "position:fixed;left:50%;top:70px;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none";
+      document.body.append(w);
+    }
+    const d = document.createElement("div");
+    d.textContent = t;
+    d.style.cssText = "background:" + (big ? "linear-gradient(90deg,#f7b733,#fc4a1a)" : "#1d2733e8") + ";color:#fff;font:800 " + (big ? "17px" : "13px") + " system-ui;padding:" + (big ? "10px 18px" : "6px 12px") + ";border-radius:999px;box-shadow:0 6px 20px #0005;transition:opacity .4s,transform .4s";
+    w.append(d);
+    setTimeout(() => {
+      d.style.opacity = 0;
+      d.style.transform = "translateY(-8px)";
+    }, big ? 3200 : 1600);
+    setTimeout(() => d.remove(), big ? 3700 : 2100);
+  } catch (e) {
+  }
+}
+(() => {
+  try {
+    const st = document.createElement("style");
+    st.textContent = ".lvb{display:inline-block;margin-left:5px;padding:1px 6px;border-radius:999px;background:#5b4cf522;color:#5b4cf5;font-size:11px;font-weight:900;vertical-align:1px}.lvcard{display:flex;gap:12px;align-items:center;margin:4px 0 12px;padding:10px 12px;border-radius:12px;background:linear-gradient(90deg,#5b4cf514,#f7b73318)}.lvbig{font-size:34px;line-height:1}.lvbar{height:9px;border-radius:9px;background:#0001;overflow:hidden;margin:5px 0 3px}.lvbar i{display:block;height:100%;background:linear-gradient(90deg,#5b4cf5,#f7b733)}.lvcard small{color:var(--mu,#777);font-size:12px}";
+    document.head.append(st);
+  } catch (e) {
+  }
+})();
 const STATS = {
   get() {
     try {
@@ -18240,7 +18282,27 @@ const STATS = {
     const s = this.get();
     s[kind] = s[kind] || {};
     s[kind][id] = (s[kind][id] || 0) + 1;
+    const gain = XP_FOR[kind] || 0;
+    const before = lvlOf(s.xp || 0);
+    s.xp = (s.xp || 0) + gain;
     LS("sp_stats", JSON.stringify(s));
+    if (gain) {
+      const after = lvlOf(s.xp);
+      if (after > before) xpToast("🎉 Niveau " + after + " · " + rankOf(after).e + " " + rankOf(after).n, true);
+      else if (gain >= 10) xpToast("+" + gain + " XP");
+    }
+  },
+  addXp(n, why) {
+    if (!(n > 0)) return;
+    const s = this.get();
+    const before = lvlOf(s.xp || 0);
+    s.xp = (s.xp || 0) + Math.round(n);
+    LS("sp_stats", JSON.stringify(s));
+    const after = lvlOf(s.xp);
+    xpToast(after > before ? "🎉 Niveau " + after + " · " + rankOf(after).e + " " + rankOf(after).n : "+" + Math.round(n) + " XP" + (why ? " · " + why : ""), after > before);
+  },
+  xp() {
+    return this.get().xp || 0;
   },
   sum(kind) {
     const o = this.get()[kind] || {};
@@ -18407,7 +18469,7 @@ const NET = {
     p.on("open", (id) => {
       this._pubTry = null;
       this.me.id = id;
-      this.players = [{ id, name: this.me.name, host: true, av: this.me.av, col: this.me.col }];
+      this.players = [{ id, name: this.me.name, host: true, av: this.me.av, col: this.me.col, lvl: lvlOf(STATS.xp()) }];
       this._status("lobby");
       this._emitPlayers();
     });
@@ -18526,7 +18588,7 @@ const NET = {
           return;
         }
         clearTimeout(this._mqT);
-        c.send({ k: "hello", name: this.me.name, av: this.me.av, col: this.me.col });
+        c.send({ k: "hello", name: this.me.name, av: this.me.av, col: this.me.col, lvl: lvlOf(STATS.xp()) });
       });
       c.on("data", (m) => {
         if (this.hostConn !== c) return;
@@ -18620,7 +18682,7 @@ const NET = {
             c.on("close", () => {
               if (this.hostConn === c && this.state !== "off") this._status("error", "De host heeft de kamer gesloten");
             });
-            c.send({ k: "hello", name: this.me.name, av: this.me.av, col: this.me.col });
+            c.send({ k: "hello", name: this.me.name, av: this.me.av, col: this.me.col, lvl: lvlOf(STATS.xp()) });
             return;
           }
           if (!chosen) return;
@@ -18822,7 +18884,7 @@ const NET = {
         const free = COLORS.find((x) => !used.includes(x));
         if (free) col = free;
       }
-      this.players.push({ id: c.peer, name, host: false, av, col });
+      this.players.push({ id: c.peer, name, host: false, av, col, lvl: Math.max(1, Math.min(999, m.lvl | 0)) });
       this.conns[c.peer] = c;
       this._bcast(this._playersMsg());
       this._emitPlayers();
@@ -19010,6 +19072,15 @@ const NET = {
       tourScore(r, key);
       STATS.bump("mpDone", this.game);
       if (r.winner === this.me.id) STATS.bump("mpWon", this.game);
+      try {
+        const rows = rankRows(r).filter((x) => !x.p.bot);
+        const i = rows.findIndex((x) => x.p.id === this.me.id);
+        if (i >= 0 && rows.length > 1 && r.winner !== this.me.id) {
+          const bonus = [30, 15, 8][i] || 0;
+          if (bonus) setTimeout(() => STATS.addXp(bonus, ["1e plaats", "2e plaats", "3e plaats"][i]), 900);
+        }
+      } catch (e) {
+      }
       if (r.scores && r.scores[this.me.id] != null) {
         const b = +r.scores[this.me.id];
         if (!isNaN(b)) bestMP(this.game, b);
@@ -19295,14 +19366,16 @@ function profileCard(prof, onChange) {
 function statsCard() {
   const s = STATS.get();
   const solo = Object.values(s.played || {}).reduce((a, b) => a + b, 0), mp = Object.values(s.mpPlayed || {}).reduce((a, b) => a + b, 0), won = Object.values(s.mpWon || {}).reduce((a, b) => a + b, 0);
-  if (!solo && !mp) return null;
+  const xp = s.xp || 0, lv = lvlOf(xp), rk = rankOf(lv), nx = xpAt(lv + 1), pv = xpAt(lv), pct = Math.round((xp - pv) / (nx - pv) * 100), nextR = RANKS.find((x) => x[0] > lv);
+  const lvHtml = `<div class="lvcard"><div class="lvbig">${rk.e}</div><div style="flex:1"><b>Niveau ${lv} · ${rk.n}</b><div class="lvbar"><i style="width:${pct}%"></i></div><small>${xp - pv} / ${nx - pv} XP naar niveau ${lv + 1}${nextR ? " · volgende rang: " + nextR[2] + " " + nextR[1] + " (niv. " + nextR[0] + ")" : ""}</small></div></div>`;
   const best2 = [];
   G.forEach((g) => {
     const b = +(LS("sp_" + g.id) || 0);
     if (b > 0) best2.push([g, b]);
   });
   best2.sort((a, b) => b[1] - a[1]);
-  const c = E("div", "mpc stats", `<h3>Jouw statistieken</h3><div class="srow"><div><b>${solo}</b><small>solo gespeeld</small></div><div><b>${mp}</b><small>online gespeeld</small></div><div><b>${won}</b><small>online gewonnen</small></div></div>${best2.length ? '<p class="hint" style="margin-top:10px">Beste scores: ' + best2.slice(0, 5).map(([g, b]) => g.e + " " + esc(g.n) + " " + b).join(" · ") + "</p>" : ""}`);
+  const dk = Object.values(s.ddKill || {}).reduce((a, b) => a + b, 0), dr = Object.values(s.ddRevive || {}).reduce((a, b) => a + b, 0);
+  const c = E("div", "mpc stats", `<h3>Jouw profiel</h3>${lvHtml}<div class="srow"><div><b>${solo}</b><small>solo gespeeld</small></div><div><b>${mp}</b><small>online gespeeld</small></div><div><b>${won}</b><small>online gewonnen</small></div></div>${dk || dr ? `<div class="srow" style="margin-top:8px"><div><b>${dk}</b><small>D-DAY treffers</small></div><div><b>${dr}</b><small>teamgenoten gered</small></div><div><b>${xp}</b><small>XP totaal</small></div></div>` : ""}${best2.length ? '<p class="hint" style="margin-top:10px">Beste scores: ' + best2.slice(0, 5).map(([g, b]) => g.e + " " + esc(g.n) + " " + b).join(" · ") + "</p>" : ""}`);
   return c;
 }
 function mpStart() {
@@ -19415,7 +19488,7 @@ function shareLink() {
   u.search = "?kamer=" + NET.code;
   return u.href;
 }
-const chip = (p) => `<li style="--c:${p.col}"${p.bot ? ` data-bot="${esc(p.id)}"` : ""}><span class="pav s" style="--c:${p.col}">${p.av || "🙂"}</span>${esc(p.name)}${p.host ? " 👑" : ""}${p.id === NET.me.id ? ' <span class="mu">(jij)</span>' : ""}</li>`;
+const chip = (p) => `<li style="--c:${p.col}"${p.bot ? ` data-bot="${esc(p.id)}"` : ""}><span class="pav s" style="--c:${p.col}">${p.av || "🙂"}</span>${esc(p.name)}${p.lvl ? ` <span class="lvb" title="${rankOf(p.lvl).n}">${rankOf(p.lvl).e}${p.lvl}</span>` : ""}${p.host ? " 👑" : ""}${p.id === NET.me.id ? ' <span class="mu">(jij)</span>' : ""}</li>`;
 function showLobby() {
   $("#home").style.display = "none";
   $("#play").style.display = "none";
@@ -38319,7 +38392,7 @@ const G = [
     };
   } },
   { id: "blackjack", n: "Blackjack 21", e: "🃏", c: "Kaarten", g: "#000000,#434343", nw: 1, run(st) {
-    const SUITS = ["♠", "♥", "♦", "♣"], RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"], KEY = "sp_bj_bank";
+    const SUITS = ["♠", "♥", "♦", "♣"], RANKS2 = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"], KEY = "sp_bj_bank";
     const sc = E("div", "sc");
     const felt = E("div");
     felt.style.cssText = "background:radial-gradient(ellipse at 50% 35%,#2f9a52,#14532d 75%);border-radius:18px;padding:10px 8px 8px;box-shadow:inset 0 0 40px rgba(0,0,0,.45),0 4px 14px rgba(0,0,0,.3);width:min(520px,100%);margin:0 auto;overflow:hidden";
@@ -38335,7 +38408,7 @@ const G = [
     let shoe = [];
     function newShoe() {
       shoe = [];
-      for (let d = 0; d < 6; d++) for (let s = 0; s < 4; s++) for (let r = 0; r < 13; r++) shoe.push({ r: RANKS[r], s: SUITS[s], v: r === 0 ? 11 : Math.min(10, r + 1) });
+      for (let d = 0; d < 6; d++) for (let s = 0; s < 4; s++) for (let r = 0; r < 13; r++) shoe.push({ r: RANKS2[r], s: SUITS[s], v: r === 0 ? 11 : Math.min(10, r + 1) });
       for (let i = shoe.length - 1; i > 0; i--) {
         const j = R(i + 1);
         [shoe[i], shoe[j]] = [shoe[j], shoe[i]];
