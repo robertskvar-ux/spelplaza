@@ -395,6 +395,8 @@ const MP = [
     const maxHp = (p) => CLS[p && p.cls || 0].hp;
     const MODES = [{ n: "Aanval", e: "🏖️", d: "Verover 4 punten van strand tot stad" }, { n: "Teamgevecht", e: "⚔️", d: "Eerste team tot 40 treffers wint" }, { n: "Vlag veroveren", e: "🚩", d: "Steel de vlag en breng hem naar je basis (3×)" }, { n: "Zombies", e: "🧟", d: "Overleef samen 10 golven zombies" }];
     const BASE = [{ x: 0, z: 150 }, { x: 0, z: 250 }], TDM_GOAL = 40, CTF_GOAL = 3, Z_WAVES = 10;
+    const VT = { jeep: { n: "Jeep", e: "🚙", hp: 320, max: 17, acc: 11, turn: 1.9, rad: 1.6, armor: 1 }, tank: { n: "Tank", e: "🛡️", hp: 1400, max: 7.5, acc: 5, turn: 1.15, rad: 2.2, armor: 0.12 } };
+    const VSP = { 0: [["jeep", 9, 6, 0], ["jeep", -9, 8, 0], ["tank", 16, -8, 0], ["jeep", 12, 126, Math.PI]], 1: [["jeep", 10, 140, 0], ["tank", -12, 136, 0], ["jeep", 10, 260, Math.PI], ["tank", -12, 264, Math.PI]], 2: [["jeep", 10, 140, 0], ["jeep", -10, 140, 0], ["jeep", 10, 260, Math.PI], ["jeep", -10, 260, Math.PI]], 3: [["jeep", 8, 6, 0], ["tank", -10, -6, 0]] };
     const DIFF = [{ n: "Rekruut", d: "trage, slordige bots", spread: 0.15, turn: 1.4, aim: 0.22, dmg: 0.5, see: 50, think: 0.34, react: 1.1 }, { n: "Soldaat", d: "eerlijk gevecht", spread: 0.065, turn: 2.4, aim: 0.14, dmg: 0.8, see: 78, think: 0.24, react: 0.6 }, { n: "Veteraan", d: "snel en dodelijk", spread: 0.022, turn: 4.2, aim: 0.08, dmg: 1.1, see: 100, think: 0.14, react: 0.28 }];
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v)), smooth = (t) => t * t * (3 - 2 * t);
     const ground = (z) => {
@@ -462,7 +464,7 @@ const MP = [
  @media(max-width:600px){.ddobjective{font-size:12px}.ddclock{font-size:15px}.ddtop{padding:6px 8px}.ddstatus,.ddcall{font-size:11px;padding:5px 7px}.ddcontrols .btn{padding:9px 11px;min-width:52px}}
  `;
     document.head.append(style);
-    const score = E("div", "sc"), frame = E("div", "ddframe"), hint = E("div", "hint d dhint", "AZERTY: Z/Q/S/D lopen · kijken met muis, slepen, A/E of pijltjes · linksklik/F schieten · rechtsklik/C richten · R herladen · 1–5 wapens · G granaat · spatie springen · W hurken · Shift sprinten · Esc/⚙ menu · H heal · V help · X opgeven · Tab score · B zandzak · v14");
+    const score = E("div", "sc"), frame = E("div", "ddframe"), hint = E("div", "hint d dhint", "AZERTY: Z/Q/S/D lopen · kijken met muis, slepen, A/E of pijltjes · linksklik/F schieten · rechtsklik/C richten · R herladen · 1–5 wapens · G granaat · spatie springen · W hurken · Shift sprinten · Esc/⚙ menu · H heal · V help · X opgeven · Tab score · B zandzak · T voertuig · v15");
     st.prepend(score);
     st.append(frame, hint);
     const T = three(frame, W, H, { fov: 74, far: 390 }), S = T.s, cam = T.cam, c = T.c, r = T.r;
@@ -975,6 +977,67 @@ const MP = [
       return g;
     }
     const zombieVis = /* @__PURE__ */ new Map();
+    const vOlive = mat(5200442, 0.8, 0.2), vDark = mat(2237727, 0.9), vTire = mat(1579290, 0.95), vGlass = mat(9417668, 0.2, 0.1);
+    function makeJeep() {
+      const g = new THREE.Group();
+      const add = (geo, m, x, y, z) => {
+        const o = new THREE.Mesh(geo, m);
+        o.position.set(x, y, z);
+        g.add(o);
+        return o;
+      };
+      add(new THREE.BoxGeometry(1.9, 0.62, 3.8), vOlive, 0, 0.78, 0);
+      add(new THREE.BoxGeometry(1.84, 0.34, 1.3), vOlive, 0, 1.2, 1.15);
+      add(new THREE.BoxGeometry(1.84, 0.62, 0.05), vGlass, 0, 1.62, 0.45);
+      add(new THREE.BoxGeometry(0.5, 0.5, 0.5), vDark, -0.42, 1.25, -0.3);
+      add(new THREE.BoxGeometry(0.5, 0.5, 0.5), vDark, 0.42, 1.25, -0.3);
+      for (const [x, z] of [[-0.98, 1.25], [0.98, 1.25], [-0.98, -1.25], [0.98, -1.25]]) {
+        const w = add(new THREE.CylinderGeometry(0.42, 0.42, 0.34, 12), vTire, x, 0.42, z);
+        w.rotation.z = Math.PI / 2;
+      }
+      const sp = add(new THREE.CylinderGeometry(0.36, 0.36, 0.25, 12), vTire, 0, 1.1, -2);
+      sp.rotation.x = Math.PI / 2;
+      const stripe = add(new THREE.BoxGeometry(1.92, 0.08, 3.82), mat(10066329), 0, 1.1, 0);
+      S.add(g);
+      return { g, stripe };
+    }
+    function makeTankV() {
+      const g = new THREE.Group();
+      const add = (geo, m, x, y, z, p = g) => {
+        const o = new THREE.Mesh(geo, m);
+        o.position.set(x, y, z);
+        p.add(o);
+        return o;
+      };
+      add(new THREE.BoxGeometry(3.3, 1.15, 5.6), vOlive, 0, 1, 0);
+      for (const sd of [-1, 1]) add(new THREE.BoxGeometry(0.85, 1.05, 6.1), vDark, sd * 1.95, 0.6, 0);
+      const tur = new THREE.Group();
+      tur.position.y = 1.95;
+      g.add(tur);
+      add(new THREE.CylinderGeometry(1.25, 1.4, 0.85, 12), vOlive, 0, 0, -0.2, tur);
+      const bar = add(new THREE.CylinderGeometry(0.13, 0.16, 3.6, 8), vDark, 0, 0.05, 1.9, tur);
+      bar.rotation.x = Math.PI / 2;
+      const stripe = add(new THREE.BoxGeometry(3.32, 0.1, 1), mat(10066329), 0, 1.62, -2.2);
+      S.add(g);
+      return { g, tur, stripe };
+    }
+    const vehVis = /* @__PURE__ */ new Map(), shellVis = [];
+    const boomG = new THREE.SphereGeometry(1, 12, 9), booms = [];
+    function addBoom(x, y, z, rad) {
+      const m = new THREE.Mesh(boomG, new THREE.MeshBasicMaterial({ color: 16754240, transparent: true, opacity: 0.9, depthWrite: false }));
+      m.position.set(x, y, z);
+      m.scale.setScalar(rad * 0.3);
+      S.add(m);
+      booms.push({ o: m, t: 0.55, rad });
+      const me_ = selected();
+      if (me_) {
+        const d = Math.hypot(me_.x - x, me_.z - z);
+        sfx("shot", clamp(1.3 - d / 80, 0.08, 1.2));
+        if (rad > 3 && d < 12) {
+          camKick += 0.03;
+        }
+      }
+    }
     const cover = [];
     block.forEach((b) => {
       for (const s of [-1, 1]) {
@@ -1115,11 +1178,11 @@ const MP = [
     const HUD = E("div", "ddhud", `<div class="ddtop"><div class="ddtoprow"><span class="ddobjective"></span><span class="ddclock"></span></div><div class="ddprogress"><i></i></div></div><div class="ddhurt"></div><div class="ddscope"></div><div class="ddcross"><i></i><i></i><i></i><i></i><b></b></div><div class="ddhit"><i></i><i></i><i></i><i></i></div><div class="ddfeed"></div><button type="button" class="ddgear">⚙ Menu</button><canvas class="ddmap" width="124" height="124"></canvas><div class="dddown"><h2>💀 NEERGESCHOTEN</h2><p class="dt"></p><div class="rb"><b></b></div><p class="dk" style="font-size:12px;opacity:.85"></p></div><div class="ddprompt"><span></span><i><b></b></i></div><div class="ddbar"><div class="ddhp"><span class="hh"></span><span class="aa"></span></div><div class="ddslots"></div></div><div class="ddstatus"></div><div class="ddcall"></div><div class="ddscore"></div>`);
     frame.append(HUD);
     const objective = HUD.querySelector(".ddobjective"), clock = HUD.querySelector(".ddclock"), progress = HUD.querySelector(".ddprogress i"), status = HUD.querySelector(".ddstatus"), call = HUD.querySelector(".ddcall"), scopeEl = HUD.querySelector(".ddscope"), crossEl = HUD.querySelector(".ddcross"), hitEl = HUD.querySelector(".ddhit"), hurtEl = HUD.querySelector(".ddhurt"), feedEl = HUD.querySelector(".ddfeed"), gearBtn = HUD.querySelector(".ddgear"), mapEl = HUD.querySelector(".ddmap"), mapX = mapEl.getContext("2d"), downEl = HUD.querySelector(".dddown"), promptEl = HUD.querySelector(".ddprompt"), hpEl = HUD.querySelector(".ddhp .hh"), arEl = HUD.querySelector(".ddhp .aa"), slotsEl = HUD.querySelector(".ddslots");
-    const controls = E("div", "ddcontrols", `<button type="button" class="btn ddfire">🔥 Vuur</button><button type="button" class="btn">↻ Wapen</button><button type="button" class="btn">⟳ Herladen</button><button type="button" class="btn">💣 Granaat</button><button type="button" class="btn">🎯 Richten</button><button type="button" class="btn">✚ Heal</button><button type="button" class="btn">🤝 Help</button><button type="button" class="btn">⤒ Spring</button><button type="button" class="btn">⬇ Hurk</button><button type="button" class="btn">📋 Score</button><button type="button" class="btn">🧱 Zandzak</button>`);
+    const controls = E("div", "ddcontrols", `<button type="button" class="btn ddfire">🔥 Vuur</button><button type="button" class="btn">↻ Wapen</button><button type="button" class="btn">⟳ Herladen</button><button type="button" class="btn">💣 Granaat</button><button type="button" class="btn">🎯 Richten</button><button type="button" class="btn">✚ Heal</button><button type="button" class="btn">🤝 Help</button><button type="button" class="btn">⤒ Spring</button><button type="button" class="btn">⬇ Hurk</button><button type="button" class="btn">📋 Score</button><button type="button" class="btn">🧱 Zandzak</button><button type="button" class="btn">🚙 In/uit</button>`);
     st.append(controls);
-    const [fireBtn, cycleBtn, reloadBtn, grenBtn, adsBtn, healBtn, helpBtn, jumpBtn, crouchBtn, scoreBtn, bagBtn] = controls.querySelectorAll("button");
+    const [fireBtn, cycleBtn, reloadBtn, grenBtn, adsBtn, healBtn, helpBtn, jumpBtn, crouchBtn, scoreBtn, bagBtn, vehBtn] = controls.querySelectorAll("button");
     const me = net.me.id, ps = /* @__PURE__ */ new Map();
-    let teamCounts = [0, 0], localYaw = 0, localPitch = 0, joyX = 0, joyY = 0, fireTouch = 0, lookId = -1, lookX = 0, lookY = 0, cmdReload = 0, cmdGrenade = 0, cmdWeapon = -1, sendClock = 0, snapClock = 0, uiClock = 0, elapsed = 0, terminal = 0, reported = 0, shotTraces = [], mouseHeld = 0, selMap = 0, selMode = 0, started = 0, wallSeq = 0, cmdBag = 0, myCls = 0, jumpQ = 0, crouchTouch = 0, camCr = 0, cmdHeal = 0, cmdGiveUp = 0, reviveTouch = 0, deathT = 0, wasAlive = 1, heartT = 0, lastDown = 0, botDifficulty = 1, ads = 0, menuOpen = 0, camKick = 0, gunKick = 0, flashT = 0, localCool = 0, lastHp = 100, hitT = 0, sens = 1, invY = false;
+    let teamCounts = [0, 0], localYaw = 0, localPitch = 0, joyX = 0, joyY = 0, fireTouch = 0, lookId = -1, lookX = 0, lookY = 0, cmdReload = 0, cmdGrenade = 0, cmdWeapon = -1, sendClock = 0, snapClock = 0, uiClock = 0, elapsed = 0, terminal = 0, reported = 0, shotTraces = [], mouseHeld = 0, cmdVeh = 0, selMap = 0, selMode = 0, started = 0, wallSeq = 0, cmdBag = 0, myCls = 0, jumpQ = 0, crouchTouch = 0, camCr = 0, cmdHeal = 0, cmdGiveUp = 0, reviveTouch = 0, deathT = 0, wasAlive = 1, heartT = 0, lastDown = 0, botDifficulty = 1, ads = 0, menuOpen = 0, camKick = 0, gunKick = 0, flashT = 0, localCool = 0, lastHp = 100, hitT = 0, sens = 1, invY = false;
     try {
       const sv = JSON.parse(localStorage.getItem("ddset") || "{}");
       if (+sv.sens > 0) sens = +sv.sens;
@@ -1127,7 +1190,7 @@ const MP = [
       myCls = clamp(+sv.cls | 0, 0, 4);
     } catch (e) {
     }
-    const game = { theme: 0, mode: 0, flags: [], caps: [0, 0], zombies: [], wave: 0, zLeft: 0, zBreak: 0, zSpawnT: 0, zk: 0, zSeq: 0, walls: [], cp: 0, prog: [0, 0, 0, 0], time: 600, elapsed: 0, winner: -1, grenades: [], scores: [0, 0], traces: [], feed: [] };
+    const game = { veh: [], shells: [], boom: [], vSeq: 0, theme: 0, mode: 0, flags: [], caps: [0, 0], zombies: [], wave: 0, zLeft: 0, zBreak: 0, zSpawnT: 0, zk: 0, zSeq: 0, walls: [], cp: 0, prog: [0, 0, 0, 0], time: 600, elapsed: 0, winner: -1, grenades: [], scores: [0, 0], traces: [], feed: [] };
     function spawn(team, index, first = true) {
       if (game.mode === 1 || game.mode === 2) {
         const B = BASE[team];
@@ -1188,6 +1251,7 @@ const MP = [
     }
     if (net.isHost) while (net.players.length < 8) net.addBot();
     syncRoster();
+    if (net.isHost) spawnVehicles();
     function selected() {
       return ps.get(me);
     }
@@ -1203,6 +1267,7 @@ const MP = [
       else if (k === " ") jumpQ = 1;
       else if (k === "x") cmdGiveUp = 1;
       else if (k === "b") cmdBag = 1;
+      else if (k === "t") cmdVeh = 1;
       else if (k === "escape" || k === "m") openMenu(false);
     });
     const digitKey = (e) => {
@@ -1343,6 +1408,7 @@ const MP = [
       jumpQ = 1;
     };
     bagBtn.onclick = () => cmdBag = 1;
+    vehBtn.onclick = () => cmdVeh = 1;
     scoreBtn.onclick = () => {
       scoreOpen = !scoreOpen;
       drawScore();
@@ -1535,7 +1601,7 @@ const MP = [
       const go = E("button", "ddgo", first ? "▶ Start" : "▶ Verder");
       go.type = "button";
       card2.append(go);
-      card2.append(E("div", "ddkeys", `<b>AZERTY</b> · Z vooruit · S achteruit · Q links · D rechts<br>Kijken: muis (klik in het beeld) óf sleep met de muis óf A/E en pijltjes ← → ↑ ↓<br>Linksklik/F schieten · rechtsklik/C richten · R herladen · &amp; é " ' ( (1–5) wapens · G granaat · spatie springen · W hurken · Shift sprinten · B zandzak (Genie) · Esc/M menu (klasse kiezen)<br>✚ H/6 medkit gebruiken · 🤝 V ingedrukt houden = teamgenoot rechthelpen · X opgeven · muiswiel wisselt wapen<br>Zoek ✚ medkits, 🛡 vesten en ▮ munitie op de kaart`));
+      card2.append(E("div", "ddkeys", `<b>AZERTY</b> · Z vooruit · S achteruit · Q links · D rechts<br>Kijken: muis (klik in het beeld) óf sleep met de muis óf A/E en pijltjes ← → ↑ ↓<br>Linksklik/F schieten · rechtsklik/C richten · R herladen · &amp; é " ' ( (1–5) wapens · G granaat · spatie springen · W hurken · Shift sprinten · B zandzak (Genie) · T in/uit voertuig · Esc/M menu (klasse kiezen)<br>✚ H/6 medkit gebruiken · 🤝 V ingedrukt houden = teamgenoot rechthelpen · X opgeven · muiswiel wisselt wapen<br>Zoek ✚ medkits, 🛡 vesten en ▮ munitie op de kaart`));
       go.onclick = () => {
         try {
           localStorage.setItem("ddset", JSON.stringify({ sens, inv: invY, cls: myCls }));
@@ -1598,6 +1664,10 @@ const MP = [
           placeBag(p);
           cmdBag = 0;
         }
+        if (cmdVeh) {
+          toggleVeh(p);
+          cmdVeh = 0;
+        }
         p.wantCls = myCls;
         if (cmdReload) {
           beginReload(p);
@@ -1611,6 +1681,10 @@ const MP = [
         const packet = { k: "i", f: a.f, s: a.s, fire: a.fire, run: a.sprint, ad: ads ? 1 : 0, y: Math.round(p.yaw * 1e3), a: Math.round(p.pitch * 1e3) };
         packet.rv = a.rv;
         packet.cl = myCls;
+        if (cmdVeh) {
+          packet.ev = 1;
+          cmdVeh = 0;
+        }
         if (cmdBag) {
           packet.bg = 1;
           cmdBag = 0;
@@ -1659,6 +1733,11 @@ const MP = [
       }
       p.hp = Math.max(0, Math.round(p.hp - amount));
       if (p.hp === 0) {
+        if (p.inVeh) {
+          const v = vehById(p.inVeh);
+          if (v) v.driver = null;
+          p.inVeh = 0;
+        }
         p.alive = 0;
         p.down = 1;
         p.rev = 0;
@@ -1738,10 +1817,23 @@ const MP = [
       let bestHit = null, bestT = wallT;
       for (const q of ps.values()) {
         if (q.id === p.id || q.team === p.team || !q.alive || q.inv > 0 || q.landing > 0) continue;
+        if (q.inVeh) {
+          const qv = vehById(q.inVeh);
+          if (qv && qv.type === "tank") continue;
+        }
         const tx = q.x - ox, ty = ground(q.z) + (q.jy || 0) + (q.cr ? 0.75 : 1.2) - oy, tz = q.z - oz, t = tx * dx + ty * dy + tz * dz;
         if (t <= 0 || t >= bestT) continue;
         const px = ox + dx * t, py = oy + dy * t, pz = oz + dz * t;
         if (Math.hypot(q.x - px, ground(q.z) + (q.jy || 0) + (q.cr ? 0.65 : 1.05) - py, q.z - pz) > 0.72) continue;
+        bestHit = q;
+        bestT = t;
+      }
+      for (const q of game.veh) {
+        if (!q.alive || !q.driver || q.team === p.team) continue;
+        const T2 = VT[q.type], tx = q.x - ox, ty = ground(q.z) + 1.1 - oy, tz = q.z - oz, t = tx * dx + ty * dy + tz * dz;
+        if (t <= 0 || t >= bestT) continue;
+        const px = ox + dx * t, py = oy + dy * t, pz = oz + dz * t;
+        if (Math.hypot(q.x - px, ground(q.z) + 1.1 - py, q.z - pz) > T2.rad * 0.85) continue;
         bestHit = q;
         bestT = t;
       }
@@ -1758,10 +1850,188 @@ const MP = [
       let flag = bestT < w.range - 0.01 ? 1 : 0;
       if (game.traces.length > 12) game.traces.shift();
       if (bestHit) {
-        const dist = Math.hypot(bestHit.x - p.x, bestHit.z - p.z), fall = clamp(1 - dist / (w.range * 1.4), 0.58, 1), head = end[1] > ground(bestHit.z) + (bestHit.jy || 0) + (bestHit.cr ? 0.95 : 1.43) ? 1.6 : 1, r2 = bestHit.isZ ? hurtZombie(bestHit, w.dmg * fall * head, p) : damage(bestHit, w.dmg * fall * head * (isB ? DIFF[botDifficulty].dmg : 1), p.id);
+        const dist = Math.hypot(bestHit.x - p.x, bestHit.z - p.z), fall = clamp(1 - dist / (w.range * 1.4), 0.58, 1), head = end[1] > ground(bestHit.z) + (bestHit.jy || 0) + (bestHit.cr ? 0.95 : 1.43) ? 1.6 : 1, r2 = bestHit.type ? vehDamage(bestHit, w.dmg * fall * VT[bestHit.type].armor, p) : bestHit.isZ ? hurtZombie(bestHit, w.dmg * fall * head, p) : damage(bestHit, w.dmg * fall * head * (isB ? DIFF[botDifficulty].dmg : 1), p.id);
         flag = r2 ? 1 + r2 + (head > 1 ? 2 : 0) : 1;
       }
       game.traces.push([net.players.findIndex((x) => x.id === p.id), Math.round(end[0] * 10), Math.round(end[1] * 10), Math.round(end[2] * 10), flag]);
+    }
+    const vehById = (id) => game.veh.find((v) => v.id === id);
+    function spawnVehicles() {
+      game.veh = [];
+      game.shells = [];
+      (VSP[game.mode] || []).forEach(([type, x, z, yaw]) => {
+        let k = 0;
+        while (k < 10 && blocked(x, ground(z) + 0.8, z, VT[type].rad)) {
+          x += 2.5;
+          k++;
+        }
+        game.veh.push({ id: ++game.vSeq, type, x, z, yaw, tur: yaw, sp: 0, hp: VT[type].hp, alive: 1, driver: null, team: null, cool: 0, rT: 0, home: { x, z, yaw } });
+      });
+    }
+    function toggleVeh(p) {
+      if (!p || !p.alive) return;
+      if (p.inVeh) {
+        const v = vehById(p.inVeh);
+        p.inVeh = 0;
+        if (v) {
+          v.driver = null;
+          for (const sd of [1, -1, 2, -2]) {
+            const x = v.x + Math.cos(v.yaw) * 2.8 * sd, z = v.z - Math.sin(v.yaw) * 2.8 * sd;
+            if (!blocked(x, ground(z) + 0.9, z, 0.4)) {
+              p.x = x;
+              p.z = z;
+              break;
+            }
+          }
+        }
+        return;
+      }
+      let best2 = null, bd = 3.6;
+      for (const v of game.veh) {
+        if (!v.alive || v.driver) continue;
+        const d = Math.hypot(v.x - p.x, v.z - p.z);
+        if (d < bd) {
+          bd = d;
+          best2 = v;
+        }
+      }
+      if (best2) {
+        best2.driver = p.id;
+        p.inVeh = best2.id;
+        best2.team = p.team;
+        p.healT = 0;
+        p.reload = 0;
+      }
+    }
+    function vehDamage(v, amt, by) {
+      if (!v || !v.alive || amt <= 0) return 0;
+      v.hp -= amt;
+      if (v.hp > 0) return 1;
+      v.alive = 0;
+      v.rT = 25;
+      v.sp = 0;
+      game.boom.push([v.x, ground(v.z) + 1.2, v.z, 9]);
+      const d = v.driver && ps.get(v.driver);
+      v.driver = null;
+      if (d) {
+        d.inVeh = 0;
+        damage(d, 95, by && by.id);
+      }
+      return 2;
+    }
+    function explode(x, y, z, owner, team, dmg, rad) {
+      game.boom.push([x, y, z, rad]);
+      const by = ps.get(owner);
+      for (const p of ps.values()) {
+        if (p.team === team || !p.alive) continue;
+        const v = p.inVeh && vehById(p.inVeh);
+        if (v && v.type === "tank") continue;
+        const d = Math.hypot(p.x - x, p.z - z);
+        if (d < rad && Math.abs(ground(p.z) + 1 - y) < 6) damage(p, dmg * (1 - d / (rad + 1)), owner);
+      }
+      if (game.mode === 3) for (const q of game.zombies) {
+        if (!q.alive) continue;
+        const d = Math.hypot(q.x - x, q.z - z);
+        if (d < rad) hurtZombie(q, dmg * 1.3 * (1 - d / (rad + 1)), by);
+      }
+      for (const v of game.veh) {
+        if (!v.alive || !v.driver || v.team === team) continue;
+        const d = Math.hypot(v.x - x, v.z - z);
+        if (d < rad + 1) vehDamage(v, dmg * (1 - d / (rad + 2)) * (v.type === "tank" ? 0.8 : 1.4), by);
+      }
+    }
+    function stepVehicles(dt) {
+      for (const v of game.veh) {
+        if (!v.alive) {
+          v.rT -= dt;
+          if (v.rT <= 0) {
+            Object.assign(v, { x: v.home.x, z: v.home.z, yaw: v.home.yaw, tur: v.home.yaw, sp: 0, hp: VT[v.type].hp, alive: 1, driver: null, team: null });
+          }
+          continue;
+        }
+        const T2 = VT[v.type];
+        let d = v.driver && ps.get(v.driver);
+        if (d && (!d.alive || d.inVeh !== v.id)) {
+          v.driver = null;
+          d = null;
+        }
+        const a = d ? d.input || {} : {}, thr = clamp(a.f || 0, -1, 1), st2 = clamp(a.s || 0, -1, 1);
+        v.cool = Math.max(0, v.cool - dt);
+        if (thr) v.sp += thr * T2.acc * dt * (Math.sign(thr) !== Math.sign(v.sp) && v.sp ? 2 : 1);
+        else v.sp *= Math.exp(-dt * (v.type === "tank" ? 3 : 1.4));
+        v.sp = clamp(v.sp, -T2.max * 0.45, T2.max);
+        const tf = v.type === "tank" ? 1 : clamp(Math.abs(v.sp) / 5, 0, 1);
+        v.yaw -= st2 * T2.turn * dt * tf * (v.sp < -0.2 ? -1 : 1);
+        const nx = v.x + Math.sin(v.yaw) * v.sp * dt, nz = v.z + Math.cos(v.yaw) * v.sp * dt;
+        if (Math.abs(nx) < 76 && nz > -30 && nz < 268 && !blocked(nx, ground(nz) + 0.8, nz, T2.rad)) {
+          v.x = nx;
+          v.z = nz;
+        } else v.sp *= -0.25;
+        if (d) {
+          d.x = v.x;
+          d.z = v.z;
+          v.team = d.team;
+          v.tur = d.yaw;
+        } else v.team = null;
+        if (v.type === "jeep" && Math.abs(v.sp) > 6 && d) {
+          for (const q of ps.values()) {
+            if (!q.alive || q.team === d.team || q.inVeh) continue;
+            if (Math.hypot(q.x - v.x, q.z - v.z) < 1.9) {
+              damage(q, 30 + Math.abs(v.sp) * 3.5, d.id);
+              v.sp *= 0.6;
+            }
+          }
+          if (game.mode === 3) {
+            for (const q of game.zombies) if (q.alive && Math.hypot(q.x - v.x, q.z - v.z) < 1.9) {
+              hurtZombie(q, 40 + Math.abs(v.sp) * 4, d);
+              v.sp *= 0.8;
+            }
+          }
+        }
+      }
+      for (const sh of game.shells) {
+        for (let k = 0; k < 4; k++) {
+          const h = dt / 4;
+          sh.x += sh.vx * h;
+          sh.y += sh.vy * h;
+          sh.z += sh.vz * h;
+          sh.vy -= 3 * h;
+          sh.ttl -= h;
+          let hit = sh.ttl <= 0 || sh.y <= ground(sh.z) + 0.1 || blocked(sh.x, sh.y, sh.z);
+          if (!hit) for (const p of ps.values()) {
+            if (p.alive && p.team !== sh.team && Math.hypot(p.x - sh.x, p.z - sh.z) < 1.3 && Math.abs(ground(p.z) + 1 - sh.y) < 1.6) {
+              hit = true;
+              break;
+            }
+          }
+          if (!hit && game.mode === 3) for (const q of game.zombies) {
+            if (q.alive && Math.hypot(q.x - sh.x, q.z - sh.z) < 1.3) {
+              hit = true;
+              break;
+            }
+          }
+          if (!hit) for (const v of game.veh) {
+            if (v.alive && v.driver && v.team !== sh.team && Math.hypot(v.x - sh.x, v.z - sh.z) < VT[v.type].rad) {
+              hit = true;
+              break;
+            }
+          }
+          if (hit) {
+            explode(sh.x, sh.y, sh.z, sh.owner, sh.team, 120, 6.5);
+            sh.dead = 1;
+            break;
+          }
+        }
+      }
+      game.shells = game.shells.filter((s) => !s.dead);
+    }
+    function vehFire(p) {
+      const v = vehById(p.inVeh);
+      if (!v || v.type !== "tank" || v.cool > 0) return;
+      v.cool = 2.4;
+      const dx = Math.sin(p.yaw) * Math.cos(p.pitch), dy = Math.sin(p.pitch), dz = Math.cos(p.yaw) * Math.cos(p.pitch);
+      game.shells.push({ x: v.x + dx * 3.6, y: ground(v.z) + 2.1 + dy * 3.6, z: v.z + dz * 3.6, vx: dx * 62, vy: dy * 62, vz: dz * 62, owner: p.id, team: p.team, ttl: 3 });
+      game.boom.push([v.x + dx * 3.8, ground(v.z) + 2.1, v.z + dz * 3.8, 1.2]);
     }
     function hurtZombie(z, amt, by) {
       if (!z.alive) return 0;
@@ -1791,8 +2061,19 @@ const MP = [
       if (net.isBot(p.id)) p.weapon = CLS[p.cls].w[0];
     }
     function detonate(g) {
+      game.boom.push([g.x, g.y, g.z, 4]);
+      for (const v of game.veh) {
+        if (v.alive && v.driver && v.team !== g.team) {
+          const d = Math.hypot(v.x - g.x, v.z - g.z);
+          if (d < 7) vehDamage(v, GUN[4].dmg * (v.type === "tank" ? 0.6 : 1.5) * (1 - d / 8), ps.get(g.owner));
+        }
+      }
       for (const p of ps.values()) {
         if (p.team === g.team || !p.alive) continue;
+        if (p.inVeh) {
+          const pv = vehById(p.inVeh);
+          if (pv && pv.type === "tank") continue;
+        }
         const d = Math.hypot(p.x - g.x, p.z - g.z), dy = Math.abs(ground(p.z) + 0.85 - g.y);
         if (d < 9 && dy < 8) damage(p, GUN[4].dmg * (1 - d / 10), g.owner);
       }
@@ -1846,11 +2127,16 @@ const MP = [
           p.rev = 0;
           p.armor = 0;
           p.inv = 2;
+          p.inVeh = 0;
           applyClass(p);
         }
         return;
       }
       const a = p.input || { f: 0, s: 0 };
+      if (p.inVeh) {
+        if (a.fire) vehFire(p);
+        return;
+      }
       movePlayer(p, a, dt);
       if (a.fire && p.cool <= 0) fire(p);
     }
@@ -2102,6 +2388,7 @@ const MP = [
         }
       }
       game.grenades = game.grenades.filter((g) => g.ttl > 0);
+      stepVehicles(dt);
       if (game.mode === 0) {
         capture(dt);
         game.time -= dt;
@@ -2305,14 +2592,16 @@ const MP = [
         applyClass(p);
       });
       for (const k of PICK) k.t = 0;
+      for (const p of ps.values()) p.inVeh = 0;
+      spawnVehicles();
     }
     function pack() {
       const players = net.players.map((n) => {
         const p = ps.get(n.id);
         if (!p) return [];
-        return [Math.round(p.x * 10), Math.round(p.z * 10), Math.round(p.yaw * 1e3), Math.round(p.pitch * 1e3), Math.ceil(p.hp), p.weapon, ...p.ammo, ...p.reserve, p.alive ? 1 : 0, Math.round(p.respawn * 10), p.kills, p.deaths, p.team, Math.round(p.inv * 10), Math.round(p.landing * 10), p.cp, Math.round(p.armor), p.med, p.down ? 1 : 0, Math.round(p.rev * 100), Math.round(p.healT * 10), Math.round((p.jy || 0) * 100), p.cr ? 1 : 0, p.revs || 0, p.cls || 0, p.bags || 0];
+        return [Math.round(p.x * 10), Math.round(p.z * 10), Math.round(p.yaw * 1e3), Math.round(p.pitch * 1e3), Math.ceil(p.hp), p.weapon, ...p.ammo, ...p.reserve, p.alive ? 1 : 0, Math.round(p.respawn * 10), p.kills, p.deaths, p.team, Math.round(p.inv * 10), Math.round(p.landing * 10), p.cp, Math.round(p.armor), p.med, p.down ? 1 : 0, Math.round(p.rev * 100), Math.round(p.healT * 10), Math.round((p.jy || 0) * 100), p.cr ? 1 : 0, p.revs || 0, p.cls || 0, p.bags || 0, p.inVeh || 0];
       });
-      return { k: "s", p: players, cp: game.cp, pr: game.prog.map((x) => Math.round(x * 1e3)), tm: Math.round(game.time * 10), el: Math.round(elapsed * 10), win: game.winner, gr: game.grenades.map((g) => [g.id, Math.round(g.x * 10), Math.round(g.y * 10), Math.round(g.z * 10), Math.round(g.vx * 10), Math.round(g.vy * 10), Math.round(g.vz * 10), g.team, net.players.findIndex((p) => p.id === g.owner), Math.round(g.ttl * 10)]), tr: game.traces.splice(0, 12), kf: game.feed.splice(0, 8), df: botDifficulty, wl: game.walls.map((w) => [w.id, Math.round(w.x * 10), Math.round(w.z * 10), Math.round(w.w * 10), Math.round(w.d * 10)]), pk: PICK.map((k) => k.t > 0 ? 0 : 1).join(""), md: game.mode, th: game.theme, cs: game.caps, sc: game.scores, fl: game.flags.map((f) => [Math.round(f.x * 10), Math.round(f.z * 10), f.carrier ? net.players.findIndex((x) => x.id === f.carrier) : -1, f.home ? 1 : 0]), zb: game.zombies.map((z) => [z.id, Math.round(z.x * 10), Math.round(z.z * 10), Math.round(z.yaw * 100), z.alive ? 1 : 0]), wv: [game.wave, game.zLeft + game.zombies.filter((z) => z.alive).length, game.zk] };
+      return { k: "s", p: players, cp: game.cp, pr: game.prog.map((x) => Math.round(x * 1e3)), tm: Math.round(game.time * 10), el: Math.round(elapsed * 10), win: game.winner, gr: game.grenades.map((g) => [g.id, Math.round(g.x * 10), Math.round(g.y * 10), Math.round(g.z * 10), Math.round(g.vx * 10), Math.round(g.vy * 10), Math.round(g.vz * 10), g.team, net.players.findIndex((p) => p.id === g.owner), Math.round(g.ttl * 10)]), tr: game.traces.splice(0, 12), kf: game.feed.splice(0, 8), df: botDifficulty, wl: game.walls.map((w) => [w.id, Math.round(w.x * 10), Math.round(w.z * 10), Math.round(w.w * 10), Math.round(w.d * 10)]), pk: PICK.map((k) => k.t > 0 ? 0 : 1).join(""), md: game.mode, vh: game.veh.map((v) => [v.id, v.type === "tank" ? 1 : 0, Math.round(v.x * 10), Math.round(v.z * 10), Math.round(v.yaw * 100), Math.round((v.tur || v.yaw) * 100), Math.round(v.hp), v.driver ? net.players.findIndex((x) => x.id === v.driver) : -1, v.alive ? 1 : 0, v.team == null ? -1 : v.team, Math.round(v.cool * 10)]), sh: game.shells.map((s) => [Math.round(s.x * 10), Math.round(s.y * 10), Math.round(s.z * 10)]), ex: game.boom.splice(0, 10).map((b) => b.map((x) => Math.round(x * 10))), th: game.theme, cs: game.caps, sc: game.scores, fl: game.flags.map((f) => [Math.round(f.x * 10), Math.round(f.z * 10), f.carrier ? net.players.findIndex((x) => x.id === f.carrier) : -1, f.home ? 1 : 0]), zb: game.zombies.map((z) => [z.id, Math.round(z.x * 10), Math.round(z.z * 10), Math.round(z.yaw * 100), z.alive ? 1 : 0]), wv: [game.wave, game.zLeft + game.zombies.filter((z) => z.alive).length, game.zk] };
     }
     function applySnap(d) {
       if (!d || d.k !== "s") return;
@@ -2395,12 +2684,16 @@ const MP = [
         p.revs = v[31] || 0;
         p.cls = v[32] || 0;
         p.bags = v[33] || 0;
+        p.inVeh = v[34] || 0;
       });
       game.grenades = (d.gr || []).map((g) => {
         var _a;
         return { id: g[0], x: g[1] / 10, y: g[2] / 10, z: g[3] / 10, vx: g[4] / 10, vy: g[5] / 10, vz: g[6] / 10, team: g[7], owner: ((_a = net.players[g[8]]) == null ? void 0 : _a.id) || "", ttl: g[9] / 10 };
       });
       if (Number.isInteger(d.md)) game.mode = d.md;
+      if (!net.isHost && Array.isArray(d.vh)) game.veh = d.vh.map((v) => ({ id: v[0], type: v[1] ? "tank" : "jeep", x: v[2] / 10, z: v[3] / 10, yaw: v[4] / 100, tur: v[5] / 100, hp: v[6], driver: v[7] >= 0 && net.players[v[7]] ? net.players[v[7]].id : null, alive: v[8], team: v[9] < 0 ? null : v[9], cool: v[10] / 10 }));
+      if (!net.isHost && Array.isArray(d.sh)) game.shells = d.sh.map((v) => ({ x: v[0] / 10, y: v[1] / 10, z: v[2] / 10 }));
+      (d.ex || []).forEach((b) => addBoom(b[0] / 10, b[1] / 10, b[2] / 10, b[3] / 10));
       if (Number.isInteger(d.th) && !net.isHost) {
         game.theme = d.th;
         applyTheme(d.th);
@@ -2510,6 +2803,7 @@ const MP = [
         if (Number.isInteger(d.w) && d.w >= 0 && d.w < 5 && canUse(p, d.w)) p.weapon = d.w;
         if (Number.isInteger(d.cl) && d.cl >= 0 && d.cl < CLS.length) p.wantCls = d.cl;
         if (d.bg) placeBag(p);
+        if (d.ev) toggleVeh(p);
         if (d.r) beginReload(p);
         if (d.g) throwGrenade(p);
       } else if (!net.isHost && d.k === "s") applySnap(d);
@@ -2558,7 +2852,8 @@ const MP = [
           p.model = createAvatar({ ...n, team: p.team });
           p.modelTeam = p.team;
         }
-        p.model.visible = (p.alive || p.down) && n.id !== me;
+        const pv = p.inVeh && vehById(p.inVeh);
+        p.model.visible = (p.alive || p.down) && (n.id !== me || !!pv) && !(pv && pv.type === "tank");
         if (p.rx === void 0 || Math.hypot(p.x - p.rx, p.z - p.rz) > 6) {
           p.rx = p.x;
           p.rz = p.z;
@@ -2569,7 +2864,16 @@ const MP = [
           p.rz += (p.z - p.rz) * k;
           p.ry += Math.atan2(Math.sin(p.yaw - p.ry), Math.cos(p.yaw - p.ry)) * k;
         }
-        if (p.alive) {
+        if (pv) {
+          const o = vehVis.get(pv.id);
+          if (o) {
+            p.rx = o.x;
+            p.rz = o.z;
+            p.model.position.set(o.x - Math.cos(o.yaw) * 0.42, ground(o.z) + 0.55, o.z + Math.sin(o.yaw) * 0.42);
+            p.model.rotation.set(0, o.yaw, 0, "YXZ");
+            p.model.scale.y = 0.8;
+          }
+        } else if (p.alive) {
           p.model.position.set(p.rx, ground(p.rz) + (p.jy || 0), p.rz);
           p.model.rotation.set(0, p.ry, 0, "YXZ");
           p.model.scale.y = p.cr ? 0.66 : 1;
@@ -2648,6 +2952,57 @@ const MP = [
         for (const [id, v] of zombieVis) if (!seen.has(id)) {
           S.remove(v.m);
           zombieVis.delete(id);
+        }
+      }
+      {
+        const seen = /* @__PURE__ */ new Set();
+        for (const v of game.veh) {
+          seen.add(v.id);
+          let o = vehVis.get(v.id);
+          if (!o) {
+            o = v.type === "tank" ? makeTankV() : makeJeep();
+            o.x = v.x;
+            o.z = v.z;
+            o.yaw = v.yaw;
+            vehVis.set(v.id, o);
+          }
+          const k = Math.min(1, dt * 12);
+          o.x += (v.x - o.x) * k;
+          o.z += (v.z - o.z) * k;
+          o.yaw += Math.atan2(Math.sin(v.yaw - o.yaw), Math.cos(v.yaw - o.yaw)) * k;
+          o.g.visible = !!v.alive;
+          o.g.position.set(o.x, ground(o.z), o.z);
+          o.g.rotation.y = o.yaw;
+          if (o.tur) o.tur.rotation.y = Math.atan2(Math.sin((v.tur || v.yaw) - o.yaw), Math.cos((v.tur || v.yaw) - o.yaw));
+          o.stripe.material.color.setHex(v.team == null ? 10066329 : TC[v.team]);
+        }
+        for (const [id, o] of vehVis) if (!seen.has(id)) {
+          S.remove(o.g);
+          vehVis.delete(id);
+        }
+        game.shells.forEach((sh, i) => {
+          let m = shellVis[i];
+          if (!m) {
+            m = new THREE.Mesh(new THREE.SphereGeometry(0.18, 6, 5), new THREE.MeshBasicMaterial({ color: 16769162 }));
+            S.add(m);
+            shellVis[i] = m;
+          }
+          m.visible = true;
+          m.position.set(sh.x, sh.y, sh.z);
+        });
+        for (let i = game.shells.length; i < shellVis.length; i++) shellVis[i].visible = false;
+        for (let i = booms.length - 1; i >= 0; i--) {
+          const b = booms[i];
+          b.t -= dt;
+          const k = 1 - b.t / 0.55;
+          b.o.scale.setScalar(b.rad * (0.3 + k * 0.8));
+          b.o.material.opacity = clamp(b.t / 0.55, 0, 1) * 0.85;
+          b.o.material.color.setHex(k < 0.3 ? 16765040 : 11565386);
+          if (b.t <= 0) {
+            S.remove(b.o);
+            b.o.material.dispose();
+            booms.splice(i, 1);
+          }
         }
       }
       for (const k of PICK) {
@@ -2808,7 +3163,13 @@ const MP = [
         } else if (p.healT > 0) {
           cam.position.y -= 0.15;
         }
-        viewGun.visible = !!p.alive && p.healT <= 0;
+        const myV = p.inVeh && vehById(p.inVeh), myVo = myV && vehVis.get(myV.id);
+        if (myVo && p.alive) {
+          const back = myV.type === "tank" ? 9 : 7.5;
+          cam.position.set(myVo.x - Math.sin(p.yaw) * back * Math.cos(p.pitch * 0.6), ground(myVo.z) + (myV.type === "tank" ? 4.4 : 3.4) - Math.sin(p.pitch) * 3, myVo.z - Math.cos(p.yaw) * back * Math.cos(p.pitch * 0.6));
+          cam.rotation.set(p.pitch - 0.16 + camKick, p.yaw + Math.PI, 0, "YXZ");
+        }
+        viewGun.visible = !!p.alive && p.healT <= 0 && !myV;
         camKick *= Math.exp(-dt * 16);
         gunKick *= Math.exp(-dt * 18);
         const fov = ads ? GW(p, p.weapon) === SNIPER ? 20 : 46 : 74;
@@ -2895,6 +3256,12 @@ const MP = [
       if (game.mode === 3) {
         mapX.fillStyle = "#8fd16a";
         for (const z of game.zombies) if (z.alive) mapX.fillRect(tx(z.x) - 1.5, ty(z.z) - 1.5, 3, 3);
+      }
+      for (const v of game.veh) if (v.alive) {
+        mapX.fillStyle = v.team == null ? "#ddd" : v.team ? "#ef6558" : "#4ca7ef";
+        mapX.font = "bold 10px system-ui";
+        mapX.textAlign = "center";
+        mapX.fillText(v.type === "tank" ? "■" : "▬", tx(v.x), ty(v.z) + 3);
       }
       if (game.mode === 0) CP.forEach((q, i) => {
         mapX.strokeStyle = i < game.cp ? "#69d895" : i === game.cp ? "#ffd166" : "#aaa";
@@ -3009,6 +3376,12 @@ const MP = [
         } else if (p.healT > 0) {
           pr = "✚ Verbinden…";
           prog = 1 - p.healT;
+        } else if (p.inVeh) {
+          const v = vehById(p.inVeh);
+          pr = v ? VT[v.type].e + " " + VT[v.type].n + " · ❤ " + Math.max(0, Math.round(v.hp)) + "/" + VT[v.type].hp + " · Z/S gas · Q/D sturen · " + (v.type === "tank" ? (v.cool > 0 ? "kanon laadt…" : "klik = 💥 kanon") + " · " : "") + "T uitstappen" : "";
+        } else if (game.veh.some((v) => v.alive && !v.driver && Math.hypot(v.x - p.x, v.z - p.z) < 3.6)) {
+          const v = game.veh.find((v2) => v2.alive && !v2.driver && Math.hypot(v2.x - p.x, v2.z - p.z) < 3.6);
+          pr = VT[v.type].e + " Druk T om in de " + VT[v.type].n.toLowerCase() + " te stappen";
         } else if (p.cls === 4 && p.bags > 0 && p.hp >= maxHp(p) * 0.6) pr = "🧱 Druk B om een zandzak te plaatsen · nog " + p.bags;
         else if (p.hp < maxHp(p) && p.med > 0) pr = "✚ Druk H (of 6) om te healen · " + p.med + " medkit" + (p.med > 1 ? "s" : "");
       }
@@ -3040,7 +3413,7 @@ const MP = [
       uiClock += dt;
       if (!net.isHost) {
         const sp = selected();
-        if (sp && sp.alive && sp.landing <= 0 && !menuOpen && game.winner < 0) {
+        if (sp && sp.alive && sp.landing <= 0 && !sp.inVeh && !menuOpen && game.winner < 0) {
           const a = axis();
           if (a) {
             sp.ads = ads;
