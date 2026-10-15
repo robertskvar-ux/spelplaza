@@ -464,7 +464,7 @@ const MP = [
  @media(max-width:600px){.ddobjective{font-size:12px}.ddclock{font-size:15px}.ddtop{padding:6px 8px}.ddstatus,.ddcall{font-size:11px;padding:5px 7px}.ddcontrols .btn{padding:9px 11px;min-width:52px}}
  `;
     document.head.append(style);
-    const score = E("div", "sc"), frame = E("div", "ddframe"), hint = E("div", "hint d dhint", "AZERTY: Z/Q/S/D lopen · kijken met muis, slepen, A/E of pijltjes · linksklik/F schieten · rechtsklik/C richten · R herladen · 1–5 wapens · G granaat · spatie springen · W hurken · Shift sprinten · Esc/⚙ menu · H heal · V help · X opgeven · Tab score · B zandzak · T voertuig · v16");
+    const score = E("div", "sc"), frame = E("div", "ddframe"), hint = E("div", "hint d dhint", "AZERTY: Z/Q/S/D lopen · kijken met muis, slepen, A/E of pijltjes · linksklik/F schieten · rechtsklik/C richten · R herladen · 1–5 wapens · G granaat · spatie springen · W hurken · Shift sprinten · Esc/⚙ menu · H heal · V help · X opgeven · Tab score · B zandzak · T voertuig · v17");
     st.prepend(score);
     st.append(frame, hint);
     const T = three(frame, W, H, { fov: 74, far: 390 }), S = T.s, cam = T.cam, c = T.c, r = T.r;
@@ -1249,7 +1249,26 @@ const MP = [
         }
       });
     }
-    if (net.isHost) while (net.players.length < 8) net.addBot();
+    let wantBots = 7;
+    try {
+      const b = +JSON.parse(localStorage.getItem("ddset") || "{}").bots;
+      if (b >= 0 && b <= 7) wantBots = b;
+    } catch (e) {
+    }
+    function setBots(n) {
+      if (!net.isHost) return;
+      const humans = net.players.filter((p) => !net.isBot(p.id)).length, want = clamp(n, 0, Math.max(0, 8 - humans));
+      let bots = net.players.filter((p) => net.isBot(p.id));
+      while (bots.length > want) {
+        net.removeBot(bots[bots.length - 1].id);
+        bots = net.players.filter((p) => net.isBot(p.id));
+      }
+      while (bots.length < want && net.players.length < 8) {
+        net.addBot();
+        bots = net.players.filter((p) => net.isBot(p.id));
+      }
+    }
+    if (net.isHost) setBots(wantBots);
     syncRoster();
     if (net.isHost) spawnVehicles();
     function selected() {
@@ -1575,6 +1594,20 @@ const MP = [
         dg.append(b);
       });
       paint();
+      const brow = E("div", "ddrow", '<span>🤖 Aantal bots</span><input type="range" min="0" max="7" step="1"><b></b>');
+      card2.append(brow);
+      const brg = brow.querySelector("input"), brv = brow.querySelector("b");
+      brg.value = wantBots;
+      brg.disabled = !net.isHost;
+      const brs = () => {
+        const humans = net.players.filter((p) => !net.isBot(p.id)).length, n = Math.min(+brg.value, 8 - humans);
+        brv.textContent = n + " bot" + (n === 1 ? "" : "s") + " · " + (humans + n) + " spelers";
+      };
+      brs();
+      brg.oninput = brs;
+      if (!net.isHost) {
+        brv.textContent = net.players.filter((p) => net.isBot(p.id)).length + " bots (kiest de host)";
+      }
       const sr = E("div", "ddrow", '<span>🖱 Gevoeligheid</span><input type="range" min="0.3" max="2.5" step="0.05"><b></b>');
       card2.append(sr);
       const rng = sr.querySelector("input"), rv = sr.querySelector("b");
@@ -1618,16 +1651,24 @@ const MP = [
       card2.append(E("div", "ddkeys", `<b>AZERTY</b> · Z vooruit · S achteruit · Q links · D rechts<br>Kijken: muis (klik in het beeld) óf sleep met de muis óf A/E en pijltjes ← → ↑ ↓<br>Linksklik/F schieten · rechtsklik/C richten · R herladen · &amp; é " ' ( (1–5) wapens · G granaat · spatie springen · W hurken · Shift sprinten · B zandzak (Genie) · T in/uit voertuig · Esc/M menu (klasse kiezen)<br>✚ H/6 medkit gebruiken · 🤝 V ingedrukt houden = teamgenoot rechthelpen · X opgeven · muiswiel wisselt wapen<br>Zoek ✚ medkits, 🛡 vesten en ▮ munitie op de kaart`));
       go.onclick = () => {
         try {
-          localStorage.setItem("ddset", JSON.stringify({ sens, inv: invY, cls: myCls }));
+          localStorage.setItem("ddset", JSON.stringify({ sens, inv: invY, cls: myCls, bots: wantBots }));
         } catch (e) {
         }
-        if (net.isHost && (!started || selMode !== game.mode)) {
-          const sel = selMode;
-          started = 1;
-          if (sel !== game.mode || elapsed > 2) resetMatch(sel);
-          else {
-            game.mode = sel;
+        if (net.isHost) {
+          const nb = +brg.value, cur2 = net.players.filter((p) => net.isBot(p.id)).length, humans = net.players.length - cur2, botsChanged = Math.min(nb, 8 - humans) !== cur2;
+          wantBots = nb;
+          try {
+            const o = JSON.parse(localStorage.getItem("ddset") || "{}");
+            o.bots = nb;
+            localStorage.setItem("ddset", JSON.stringify(o));
+          } catch (e) {
+          }
+          if (botsChanged) setBots(nb);
+          if (!started || selMode !== game.mode || botsChanged) {
+            const sel = selMode;
             started = 1;
+            if (sel !== game.mode || elapsed > 2 || botsChanged) resetMatch(sel);
+            else game.mode = sel;
           }
         }
         m.remove();
