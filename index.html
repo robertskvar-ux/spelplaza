@@ -40263,6 +40263,45 @@ function sec(title, gs, n, click) {
   s.append(gr);
   return s;
 }
+const CATI = { "3D": "🧊", "Arcade": "🕹️", "Puzzel": "🧩", "Bord": "♟️", "Kaarten": "🃏", "Woorden": "🔤", "Geheugen": "🧠", "Kaartspellen": "🃏" };
+(() => {
+  try {
+    const st = document.createElement("style");
+    st.textContent = ".shelfsec{margin-bottom:4px}.shelfsec .gh2{align-items:center}.shelfsec .more{margin-left:auto;background:none;border:0;color:var(--ac);font-weight:800;font-size:13px;cursor:pointer;padding:4px 2px;white-space:nowrap}.shelfw{position:relative}.grid.shelf{display:grid;grid-auto-flow:column;grid-template-columns:none;grid-auto-columns:minmax(132px,158px);overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;padding:2px 2px 10px;gap:12px;scrollbar-width:thin}.grid.shelf>.card{scroll-snap-align:start}.sarr{position:absolute;top:38%;transform:translateY(-50%);z-index:2;width:38px;height:38px;border-radius:50%;border:1px solid var(--ln);background:var(--card);color:var(--tx);font:900 22px/1 system-ui;cursor:pointer;box-shadow:0 4px 14px #0003;display:none}.sarr.l{left:-14px}.sarr.r{right:-14px}@media(hover:hover) and (min-width:700px){.sarr{display:block}}";
+    document.head.append(st);
+  } catch (e) {
+  }
+})();
+function shelf(title, items, more) {
+  const s = E("section", "grp shelfsec");
+  const h = E("div", "gh2", "<h2>" + title + "</h2><span>" + items.length + "</span>");
+  if (more) {
+    const a = E("button", "more", "Alles bekijken →");
+    a.onclick = more;
+    h.append(a);
+  }
+  s.append(h);
+  const w = E("div", "shelfw"), gr = E("div", "grid shelf");
+  items.forEach(([g, click, sub]) => {
+    const c = card(g, click || null);
+    if (sub != null) c.querySelector("small").textContent = sub;
+    gr.append(c);
+  });
+  const l = E("button", "sarr l", "‹"), r = E("button", "sarr r", "›");
+  l.setAttribute("aria-label", "Vorige");
+  r.setAttribute("aria-label", "Volgende");
+  l.onclick = () => gr.scrollBy({ left: -gr.clientWidth * 0.85, behavior: "smooth" });
+  r.onclick = () => gr.scrollBy({ left: gr.clientWidth * 0.85, behavior: "smooth" });
+  w.append(l, gr, r);
+  s.append(w);
+  const fit = () => {
+    const over = gr.scrollWidth > gr.clientWidth + 4;
+    l.style.visibility = r.style.visibility = over ? "" : "hidden";
+  };
+  requestAnimationFrame(fit);
+  addEventListener("resize", fit);
+  return s;
+}
 function draw() {
   $("#cnt").textContent = G.length + MP.filter((m) => !(typeof BOTH !== "undefined" && Object.values(BOTH).includes(m.id))).length;
   const raw = $("#q").value.trim(), q = raw.toLowerCase();
@@ -40281,16 +40320,42 @@ function draw() {
   if (cat == "Alles" && !q) {
     const rec = recent().map((id) => G.find((g) => g.id === id)).filter(Boolean);
     if (MP.length) {
-      const bn = E("div", "mpbn", `<div><b>👥 Samen spelen met vrienden</b><span>Maak een kamer, deel de code en speel ${MP.length} spellen samen of tegen elkaar — op ieders eigen telefoon.</span></div><button class="btn">Kamer maken of meedoen</button>`);
+      const bn = E("div", "mpbn", "<div><b>👥 Samen spelen met vrienden</b><span>Maak een kamer, deel de code en speel " + MP.length + ' spellen samen of tegen elkaar — op ieders eigen telefoon.</span></div><button class="btn">Kamer maken of meedoen</button>');
       bn.querySelector(".btn").onclick = mpOpen;
       L.append(bn);
     }
-    if (rec.length) L.append(sec("Laatst gespeeld", rec));
+    const mpGo = (m) => {
+      try {
+        NET.want = m.id;
+      } catch (e) {
+      }
+      mpOpen();
+    }, mpSub = (m) => (m.min === m.max ? m.min : m.min + "–" + m.max) + " spelers · online";
+    const played = (() => {
+      try {
+        return JSON.parse(localStorage.getItem("sp_stats") || "{}").played || {};
+      } catch (e) {
+        return {};
+      }
+    })();
+    const POPU = ["blokkenland", "tetris", "snake", "pacman", "sudoku", "race3d", "helix", "2048", "mahjong", "invaders", "solitaire", "flappy"];
+    const pi = (id) => {
+      const i = POPU.indexOf(id);
+      return i < 0 ? 99 : i;
+    };
+    const pop = G.slice().sort((a, b) => (played[b.id] || 0) - (played[a.id] || 0) || pi(a.id) - pi(b.id)).slice(0, 10);
+    const NEWMP = ["dday", "race"].map((id) => MP.find((m) => m.id === id)).filter(Boolean);
+    L.append(shelf("🔥 Nieuw & populair", NEWMP.map((m) => [m, () => mpGo(m), "🆕 " + mpSub(m)]).concat(pop.map((g) => [g]))));
+    if (rec.length) L.append(shelf("⏱️ Verder spelen", rec.map((g) => [g])));
+    if (MP.length) L.append(shelf("👥 Samen spelen", MP.map((m) => [m, () => mpGo(m), mpSub(m)]), mpOpen));
     cats.slice(1).forEach((c) => {
       const gs = list.filter((g) => g.c == c);
-      if (gs.length) L.append(sec(c, gs, gs.length));
+      if (gs.length) L.append(shelf((CATI[c] || "🎮") + " " + c, gs.map((g) => [g]), () => {
+        cat = c;
+        draw();
+        scrollTo({ top: 0, behavior: "smooth" });
+      }));
     });
-    if (MP.length) L.append(sec("Samen spelen met een code", MP, MP.length, mpOpen));
   } else {
     if (list.length) L.append(sec(q ? "Gevonden" : cat, list, list.length));
     const ml = MP.filter((m) => q && m.n.toLowerCase().includes(q));
