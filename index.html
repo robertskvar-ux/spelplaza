@@ -464,7 +464,7 @@ const MP = [
  @media(max-width:600px){.ddobjective{font-size:12px}.ddclock{font-size:15px}.ddtop{padding:6px 8px}.ddstatus,.ddcall{font-size:11px;padding:5px 7px}.ddcontrols .btn{padding:9px 11px;min-width:52px}}
  `;
     document.head.append(style);
-    const score = E("div", "sc"), frame = E("div", "ddframe"), hint = E("div", "hint d dhint", "AZERTY: Z/Q/S/D lopen · kijken met muis, slepen, A/E of pijltjes · linksklik/F schieten · rechtsklik/C richten · R herladen · 1–5 wapens · G granaat · spatie springen · W hurken · Shift sprinten · Esc/⚙ menu · H heal · V help · X opgeven · Tab score · B zandzak · T voertuig · v15");
+    const score = E("div", "sc"), frame = E("div", "ddframe"), hint = E("div", "hint d dhint", "AZERTY: Z/Q/S/D lopen · kijken met muis, slepen, A/E of pijltjes · linksklik/F schieten · rechtsklik/C richten · R herladen · 1–5 wapens · G granaat · spatie springen · W hurken · Shift sprinten · Esc/⚙ menu · H heal · V help · X opgeven · Tab score · B zandzak · T voertuig · v16");
     st.prepend(score);
     st.append(frame, hint);
     const T = three(frame, W, H, { fov: 74, far: 390 }), S = T.s, cam = T.cam, c = T.c, r = T.r;
@@ -1376,6 +1376,20 @@ const MP = [
     document.addEventListener("pointerlockchange", lockChange);
     document.addEventListener("mousemove", mouseLook);
     c.addEventListener("pointerdown", canvasDown);
+    const mouseBtn = (e) => {
+      if (menuOpen) return;
+      if (e.button === 2) {
+        e.preventDefault();
+        ads = 1;
+      } else if (e.button === 0 && document.pointerLockElement === c) mouseHeld = 1;
+    };
+    document.addEventListener("mousedown", mouseBtn);
+    const chord = (e) => {
+      if (e.pointerType !== "mouse" || menuOpen) return;
+      if (document.pointerLockElement === c && e.buttons & 1) mouseHeld = 1;
+      if (e.buttons & 2) ads = 1;
+    };
+    document.addEventListener("pointermove", chord);
     c.addEventListener("pointermove", playerLook);
     const releaseLook = (e) => {
       if (e.pointerId === lookId) lookId = -1;
@@ -3481,6 +3495,8 @@ const MP = [
       document.removeEventListener("pointerlockchange", lockChange);
       document.removeEventListener("mouseup", mouseUp);
       c.removeEventListener("click", canvasClick);
+      document.removeEventListener("mousedown", mouseBtn);
+      document.removeEventListener("pointermove", chord);
       removeEventListener("keydown", tabDown);
       removeEventListener("keyup", tabUp);
       c.removeEventListener("wheel", onWheel);
