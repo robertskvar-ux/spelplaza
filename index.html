@@ -3673,6 +3673,2499 @@ const MP = [
     }
     return clean;
   } },
+  { id: "flight", n: "Vliegen", e: "✈️", c: "Samen", g: "#2b5876,#4e4376", min: 1, max: 8, bots: true, run(st, net) {
+    const HOST = net.isHost, ME = net.me.id, TAU = Math.PI * 2;
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v)), lerp = (a, b, t) => a + (b - a) * t, sstep = (a, b, x) => {
+      const t = clamp((x - a) / (b - a), 0, 1);
+      return t * t * (3 - 2 * t);
+    };
+    const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+    const DEFAULT_CFG = {
+      mode: "free",
+      // 'free' vrij vliegen · 'dogfight' luchtgevecht · 'race' luchtrace
+      modes: { free: true, dogfight: true, race: true },
+      // which modes may be chosen
+      planes: { prop: true, transport: true, airliner: true, fighter: true },
+      // which aircraft are allowed in this room
+      unlockAll: false,
+      // true = every aircraft, skin and upgrade is free for everybody in this room
+      startMoney: 300,
+      // money a new player starts with (on his own device)
+      rewards: true,
+      // earn money for landings, races and dogfights
+      weapons: true,
+      // guns + missiles in dogfights
+      freeWeapons: false,
+      // also allow weapons in free flight
+      missiles: true,
+      flares: true,
+      friendlyFire: false,
+      teams: false,
+      dmgMul: 1,
+      damage: true,
+      // crashes/hits damage the aircraft (off = arcade, you bounce)
+      repairs: true,
+      // repair by stopping on a runway or the carrier
+      emergencies: true,
+      engineFail: true,
+      gearFail: true,
+      emergencyRate: 1,
+      // rate = failures per ~10 minutes
+      weather: "clear",
+      // 'clear' 'clouds' 'fog' 'storm'
+      wind: 0.4,
+      turbulence: 0.4,
+      // 0..1
+      time: 13,
+      dayCycle: true,
+      daySpeed: 1,
+      // hour of day, whether it moves, minutes per real second
+      carrier: true,
+      airports: true,
+      spawn: "runway",
+      // 'runway' 'air' 'carrier'
+      bots: true,
+      botCount: 3,
+      botLevel: 1,
+      botBehavior: "auto",
+      botPlane: "mix",
+      // auto/patrol/route/circuit/race/escort/dogfight
+      raceLaps: 1,
+      coPilot: true
+    };
+    let CFG = Object.assign({}, DEFAULT_CFG);
+    try {
+      const s = JSON.parse(localStorage.getItem("flyCfg") || "null");
+      if (s && HOST) CFG = Object.assign({}, DEFAULT_CFG, s, { modes: Object.assign({}, DEFAULT_CFG.modes, s.modes || {}), planes: Object.assign({}, DEFAULT_CFG.planes, s.planes || {}) });
+    } catch (e) {
+    }
+    const saveCfg = () => {
+      try {
+        localStorage.setItem("flyCfg", JSON.stringify(CFG));
+      } catch (e) {
+      }
+    };
+    const PLANES = {
+      prop: { n: "Propellervliegtuig", e: "🛩️", d: "Klein, traag en vergevingsgezind — perfect om te leren landen.", max: 78, stall: 23, vr: 29, thrust: 3.4, rp: 1.4, rr: 2.3, ry: 0.7, turn: 0.55, hp: 80, r: 6, gearH: 1.55, price: 0, guns: false, missiles: 0, flares: 0, cam: [14, 4] },
+      transport: { n: "Militair transport", e: "🛬", d: "Vier propellers, sterk en stabiel. Veel flares, geen wapens.", max: 165, stall: 42, vr: 50, thrust: 3.6, rp: 0.75, rr: 1.15, ry: 0.35, turn: 0.42, hp: 240, r: 17, gearH: 2.6, price: 500, guns: false, missiles: 0, flares: 30, cam: [38, 10] },
+      airliner: { n: "Passagiersvliegtuig", e: "✈️", d: "Groot en zwaar. Rustig vliegen, lange landing nodig.", max: 245, stall: 58, vr: 68, thrust: 3.9, rp: 0.55, rr: 0.85, ry: 0.25, turn: 0.32, hp: 280, r: 20, gearH: 3.2, price: 800, guns: false, missiles: 0, flares: 0, cam: [50, 12] },
+      fighter: { n: "Straaljager", e: "🛫", d: "Supersnel en wendbaar. Mitrailleur, raketten en flares.", max: 300, stall: 58, vr: 70, thrust: 11, rp: 1.9, rr: 4, ry: 0.55, turn: 0.72, hp: 120, r: 9, gearH: 1.9, price: 1200, guns: true, missiles: 4, flares: 12, cam: [20, 5] }
+    };
+    const PKEYS = ["prop", "transport", "airliner", "fighter"];
+    for (const k of PKEYS) PLANES[k].drag = PLANES[k].thrust / (PLANES[k].max * PLANES[k].max);
+    const SKINS = {
+      std: { n: "Standaard", price: 0 },
+      spel: { n: "SpelPlaza", price: 150, c: [5983477, 16228922, 16777215] },
+      rood: { n: "Rood-wit", price: 150, c: [14233899, 15987699, 2236962] },
+      camo: { n: "Camouflage", price: 200, c: [5925692, 4016682, 9079386] },
+      race: { n: "Racegeel", price: 200, c: [16106776, 1710618, 16106776] },
+      nacht: { n: "Nachtvlucht", price: 250, c: [1909811, 3160397, 5882623] }
+    };
+    const SKEYS = Object.keys(SKINS);
+    const UPG = { engine: { n: "Sterkere motor", d: "+12% stuwkracht", price: 400 }, armor: { n: "Pantser", d: "+30% leven", price: 400 }, flare: { n: "Extra flares", d: "+50% flares", price: 250 }, seeker: { n: "Betere raketten", d: "raketten draaien 30% beter", price: 350 } };
+    const UKEYS = Object.keys(UPG);
+    let MEP = { money: CFG.startMoney, owned: ["prop", "std"], plane: "prop", skin: "std", invert: false, mouse: true, sens: 1, spawnAt: "auto", cam: 0 };
+    try {
+      const s = JSON.parse(localStorage.getItem("flyMe") || "null");
+      if (s) MEP = Object.assign(MEP, s);
+    } catch (e) {
+    }
+    const saveMe = () => {
+      try {
+        localStorage.setItem("flyMe", JSON.stringify(MEP));
+      } catch (e) {
+      }
+    };
+    const owns = (k) => CFG.unlockAll || MEP.owned.includes(k) || PLANES[k] && PLANES[k].price === 0 || SKINS[k] && SKINS[k].price === 0;
+    const hasUp = (k) => CFG.unlockAll || MEP.owned.includes("up_" + k);
+    const style = document.createElement("style");
+    style.textContent = `
+ .flf{position:relative;width:min(1000px,100%);margin:6px auto 0;border-radius:12px;overflow:hidden;background:#0d1520;touch-action:none;user-select:none;-webkit-user-select:none}
+ .flf canvas.fl3{display:block;width:100%!important;height:auto!important}
+ .flh{position:absolute;inset:0;pointer-events:none;color:#e9f6ff;font:700 13px/1.25 system-ui,sans-serif;text-shadow:0 1px 3px #000}
+ .flbox{position:absolute;background:#0a1420b8;border:1px solid #7fd6ff40;border-radius:9px;padding:6px 9px;backdrop-filter:blur(3px)}
+ .fl-spd{left:2%;top:40%;text-align:center;min-width:76px}.fl-alt{right:2%;top:40%;text-align:center;min-width:76px}
+ .fl-spd b,.fl-alt b{display:block;font-size:22px;font-variant-numeric:tabular-nums;color:#9ff0ff}.fl-spd small,.fl-alt small{color:#9fb6c8;font-size:11px}
+ .fl-hdg{left:50%;top:2%;transform:translateX(-50%);width:260px;height:30px;overflow:hidden;padding:0}.fl-hdg canvas{display:block}
+ .fl-top{left:2%;top:2%;max-width:40%}.fl-topr{right:2%;top:2%;text-align:right;max-width:34%}
+ .fl-bot{left:50%;bottom:2%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;white-space:nowrap}
+ .fl-bar{display:inline-block;width:70px;height:8px;border-radius:5px;background:#ffffff26;overflow:hidden;vertical-align:middle}.fl-bar i{display:block;height:100%;background:#7ff0a8}
+ .fl-warn{position:absolute;left:50%;top:22%;transform:translateX(-50%);font:900 22px system-ui;color:#ff5348;text-align:center;letter-spacing:.06em;animation:flb .5s steps(2) infinite}
+ @keyframes flb{50%{opacity:.25}}
+ .fl-msg{position:absolute;left:50%;top:31%;transform:translateX(-50%);text-align:center;font-size:15px;color:#ffe9a6}
+ .fl-cross{position:absolute;left:50%;top:50%;width:26px;height:26px;margin:-13px;border:2px solid #9ff0ffaa;border-radius:50%}
+ .fl-lock{position:absolute;width:44px;height:44px;margin:-22px;border:2px solid #ff4b3a;display:none}
+ .fl-map{position:absolute;right:2%;bottom:2%;width:150px;height:150px;border-radius:50%;border:2px solid #7fd6ff60;background:#0a1420c8}
+ .fl-ah{position:absolute;left:2%;bottom:2%;width:110px;height:110px;border-radius:50%;border:2px solid #7fd6ff60;overflow:hidden}
+ .fl-list{font-weight:600;font-size:12px}.fl-list div{white-space:nowrap}
+ .flmenu{position:absolute;inset:0;background:#08101acc;display:flex;align-items:flex-start;justify-content:center;z-index:5;overflow:auto;padding:10px;pointer-events:auto}
+ .flcard{background:#121e2c;color:#e8f2fb;border:1px solid #ffffff2a;border-radius:14px;width:min(720px,100%);padding:14px 16px;font:500 14px system-ui;box-shadow:0 12px 40px #000a}
+ .flcard h2{margin:0 0 6px;font-size:22px}.flcard h3{margin:12px 0 6px;font-size:15px;color:#9fd8ff}
+ .fltabs{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.fltabs button{background:#1f3045;color:#dce9f5;border:1px solid #ffffff22;border-radius:9px;padding:7px 11px;font:700 13px system-ui;cursor:pointer}.fltabs button.on{background:#2f6fb0;border-color:#9fd8ff}
+ .flgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+ .flopt{background:#1a2939;border:2px solid #ffffff1c;border-radius:11px;padding:9px;cursor:pointer;text-align:left;color:inherit;font:inherit}.flopt.on{border-color:#ffd166;background:#2a3420}.flopt.lock{opacity:.75}
+ .flopt b{display:block;font-size:14px}.flopt small{display:block;color:#a9bccd;font-size:11.5px;margin-top:2px}.flopt .pr{color:#ffd166;font-weight:800}
+ .flrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid #ffffff12;font-size:13px}.flrow select,.flrow input[type=range]{max-width:55%}
+ .flrow select{background:#1f3045;color:#e8f2fb;border:1px solid #ffffff2a;border-radius:7px;padding:4px}
+ .flgo{background:#e0632f;color:#fff;border:0;border-radius:11px;padding:12px 26px;font:900 17px system-ui;cursor:pointer;margin-top:12px}
+ .flsec{background:#2a3c52;color:#fff;border:0;border-radius:9px;padding:8px 14px;font:700 13px system-ui;cursor:pointer;margin:8px 6px 0 0}
+ .flkeys{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:13px}.flkeys b{color:#ffd166;white-space:nowrap}
+ .flnote{color:#a9bccd;font-size:12px;margin:4px 0}
+ .flctl{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:8px auto;max-width:1000px}.flctl .btn{touch-action:none;min-width:52px}
+ @media(max-width:620px){.fl-spd b,.fl-alt b{font-size:16px}.fl-map{width:96px;height:96px}.fl-ah{width:74px;height:74px}.fl-hdg{width:170px}.fl-top,.fl-topr{font-size:11px}.fl-warn{font-size:16px}}`;
+    document.head.append(style);
+    const W = Math.min(960, Math.max(640, Math.round((window.innerWidth || 800) * 1.3))), H_ = Math.round(W * 9 / 16);
+    const sc = E("div", "sc"), frame = E("div", "flf");
+    st.prepend(sc);
+    st.append(frame);
+    const T3 = three(frame, W, H_, { fov: 68, far: 16e3 }), S = T3.s, cam = T3.cam, c = T3.c, r = T3.r;
+    c.classList.add("fl3");
+    r.outputColorSpace = THREE.SRGBColorSpace;
+    const HUD = E("div", "flh", `<div class="flbox fl-top"></div><div class="flbox fl-topr"></div><div class="flbox fl-hdg"><canvas width="260" height="30"></canvas></div>
+  <div class="flbox fl-spd"><small>SNELHEID</small><b>0</b><small>km/u</small></div><div class="flbox fl-alt"><small>HOOGTE</small><b>0</b><small>m</small></div>
+  <div class="fl-cross"></div><div class="fl-lock"></div><div class="fl-warn"></div><div class="fl-msg"></div><div class="flbox fl-bot"></div>
+  <canvas class="fl-map" width="150" height="150"></canvas><canvas class="fl-ah" width="110" height="110"></canvas>`);
+    frame.append(HUD);
+    const hq = (s) => HUD.querySelector(s), hTop = hq(".fl-top"), hTopR = hq(".fl-topr"), hHdg = hq(".fl-hdg canvas").getContext("2d"), hSpd = hq(".fl-spd b"), hAlt = hq(".fl-alt b"), hWarn = hq(".fl-warn"), hMsg = hq(".fl-msg"), hBot = hq(".fl-bot"), hLock = hq(".fl-lock"), mapC = hq(".fl-map"), mapX = mapC.getContext("2d"), ahX = hq(".fl-ah").getContext("2d");
+    const hint = E("div", "hint", "Klik in het beeld om met de muis te sturen · Z/S neus omlaag/omhoog · Q/D rollen · A/E roer · Shift/Ctrl gas · G landingsgestel · B remmen · C camera · Esc menu");
+    st.append(hint);
+    let msgT = 0;
+    const say = (t, s = 3) => {
+      hMsg.textContent = t;
+      msgT = s;
+    };
+    const WORLD = 1e4, HALF = WORLD / 2;
+    const hash = (x, y) => {
+      const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+      return s - Math.floor(s);
+    };
+    const vnoise = (x, y) => {
+      const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+      return lerp(lerp(hash(xi, yi), hash(xi + 1, yi), u), lerp(hash(xi, yi + 1), hash(xi + 1, yi + 1), u), v);
+    };
+    const fbm = (x, y) => {
+      let a = 0, f = 1, s = 0.5;
+      for (let i = 0; i < 5; i++) {
+        a += vnoise(x * f, y * f) * s;
+        f *= 2.03;
+        s *= 0.5;
+      }
+      return a;
+    };
+    const AIRPORTS = [{ n: "Plaza Airport", x: -1300, z: 500, len: 1500, w: 46, h: 0 }, { n: "Bergveld", x: 1500, z: -1500, len: 1e3, w: 36, h: 0 }];
+    const rawH = (x, z) => {
+      const d = Math.hypot(x * 0.9, z) / 3500, island = 1 - sstep(0.72, 1.02, d);
+      const hills = fbm(x / 1300 + 11, z / 1300 - 7) * 300, ridge = Math.pow(Math.max(0, fbm(x / 900 - 3, z / 900 + 5) - 0.42), 1.6) * 2600 * sstep(0.1, 0.6, 1 - d);
+      return island * (30 + hills + ridge) - (1 - island) * 80;
+    };
+    for (const a of AIRPORTS) a.h = Math.max(25, rawH(a.x, a.z) * 0.6 + 10);
+    function terrainH(x, z) {
+      let h = rawH(x, z);
+      for (const a of AIRPORTS) {
+        const out = Math.abs(z - a.z) - a.len / 2, lat = Math.abs(x - a.x);
+        if (out > 0 && out < 4200 && lat < 520) {
+          const cap = a.h - 4 + out * 0.035 + Math.max(0, lat - 170) * 0.9;
+          if (h > cap) h = lerp(h, cap, sstep(520, 170, lat) * sstep(4200, 3200, out));
+        }
+      }
+      for (const a of AIRPORTS) {
+        const dx = Math.max(0, Math.abs(x - a.x) - a.w * 2.2), dz = Math.max(0, Math.abs(z - a.z) - a.len / 2 - 120);
+        const d = Math.hypot(dx, dz);
+        if (d < 260) h = lerp(a.h, h, sstep(0, 260, d));
+      }
+      return h;
+    }
+    {
+      const N = 170, geo = new THREE.PlaneGeometry(WORLD, WORLD, N, N);
+      geo.rotateX(-Math.PI / 2);
+      const pos = geo.attributes.position, col = new Float32Array(pos.count * 3), cc = new THREE.Color();
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i), z = pos.getZ(i), h = terrainH(x, z);
+        pos.setY(i, h);
+        if (h < 3) cc.setHex(14207386);
+        else if (h < 180) cc.setHex(6195774).lerp(new THREE.Color(4879412), hash(x * 0.01, z * 0.01));
+        else if (h < 520) cc.setHex(7305798).lerp(new THREE.Color(8219989), sstep(180, 520, h));
+        else if (h < 900) cc.setHex(8812650);
+        else cc.setHex(15660022);
+        col[i * 3] = cc.r;
+        col[i * 3 + 1] = cc.g;
+        col[i * 3 + 2] = cc.b;
+      }
+      geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+      geo.computeVertexNormals();
+      S.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true })));
+    }
+    const seaMat = new THREE.MeshStandardMaterial({ color: 3108751, roughness: 0.35, metalness: 0.1 });
+    const sea = new THREE.Mesh(new THREE.PlaneGeometry(WORLD * 3, WORLD * 3), seaMat);
+    sea.rotation.x = -Math.PI / 2;
+    sea.position.y = 0;
+    S.add(sea);
+    const M = (c2, r2 = 0.8, m = 0, e = 0) => new THREE.MeshStandardMaterial({ color: c2, roughness: r2, metalness: m, emissive: e });
+    const box = (w, h, d, mat, x, y, z, p = S) => {
+      const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      o.position.set(x, y, z);
+      p.add(o);
+      return o;
+    };
+    const lightBulbs = [], lightMat = new THREE.MeshBasicMaterial({ color: 16771488 });
+    for (const a of AIRPORTS) {
+      const g = new THREE.Group();
+      g.position.set(a.x, a.h, a.z);
+      S.add(g);
+      box(a.w, 0.3, a.len, M(4014149, 0.9), 0, 0.15, 0, g);
+      for (let z = -a.len / 2 + 60; z < a.len / 2 - 60; z += 60) box(1.2, 0.32, 22, M(15921906), 0, 0.17, z, g);
+      for (const s of [-1, 1]) {
+        for (let k = -6; k <= 6; k++) if (k) box(1.8, 0.32, 30, M(15921906), k * 3.1, 0.17, s * (a.len / 2 - 30), g);
+        box(a.w, 0.32, 2, M(15921906), 0, 0.17, s * (a.len / 2 - 50), g);
+      }
+      for (let z = -a.len / 2; z <= a.len / 2; z += 50) for (const s of [-1, 1]) {
+        const b = new THREE.Mesh(new THREE.SphereGeometry(0.6, 6, 4), lightMat);
+        b.position.set(s * (a.w / 2 + 1), 0.6, z);
+        g.add(b);
+        lightBulbs.push(b);
+      }
+      box(120, 0.25, 90, M(5593438, 0.9), a.w / 2 + 80, 0.12, -a.len / 4, g);
+      const tw = box(8, 26, 8, M(13620182), a.w / 2 + 150, 13, -a.len / 4 + 60, g);
+      box(13, 5, 13, M(2837084, 0.3, 0.2, 663600), a.w / 2 + 150, 28, -a.len / 4 + 60, g);
+      for (let k = 0; k < 3; k++) {
+        box(40, 16, 34, M(10134699, 0.7, 0.3), a.w / 2 + 60 + k * 46, 8, -a.len / 4 - 90, g);
+        box(41, 2, 35, M(7174014), a.w / 2 + 60 + k * 46, 16.5, -a.len / 4 - 90, g);
+      }
+      const ws = new THREE.Mesh(new THREE.ConeGeometry(1.2, 5, 8, 1, true), M(16738842));
+      ws.rotation.z = Math.PI / 2;
+      ws.position.set(-a.w / 2 - 12, 8, 0);
+      g.add(ws);
+      a.sock = ws;
+      box(0.3, 8, 0.3, M(14540253), -a.w / 2 - 12, 4, 0, g);
+    }
+    const CARRIER = { cx: 3900, cz: 200, R: 1100, w: 68e-4, deckY: 19, len: 300, wid: 62 };
+    const carrierPose = (t) => {
+      const a = t * CARRIER.w;
+      return { x: CARRIER.cx + Math.cos(a) * CARRIER.R, z: CARRIER.cz + Math.sin(a) * CARRIER.R, yaw: Math.atan2(-Math.sin(a), Math.cos(a)) + Math.PI / 2 * 0, head: a };
+    };
+    const carrierG = new THREE.Group();
+    S.add(carrierG);
+    {
+      const hull = M(7239292, 0.7, 0.25), deck = M(3817027, 0.9);
+      box(70, 16, 300, hull, 0, 8, 0, carrierG);
+      box(CARRIER.wid, 1.2, CARRIER.len, deck, 0, CARRIER.deckY - 0.6, 0, carrierG);
+      for (let z = -130; z < 140; z += 24) box(1, 0.25, 12, M(15921906), 0, CARRIER.deckY + 0.05, z, carrierG);
+      box(46, 0.25, 1.2, M(16765503), 0, CARRIER.deckY + 0.05, -110, carrierG);
+      for (const z of [-92, -84, -76]) box(40, 0.4, 0.4, M(2236962), 0, CARRIER.deckY + 0.2, z, carrierG);
+      box(12, 22, 40, M(8226187), 24, CARRIER.deckY + 11, 30, carrierG);
+      box(10, 6, 18, M(2837084, 0.3, 0.2), 24, CARRIER.deckY + 25, 30, carrierG);
+      const ant = box(1, 14, 1, M(10066329), 24, CARRIER.deckY + 35, 30, carrierG);
+    }
+    function carrierAt(t) {
+      const a = t * CARRIER.w, x = CARRIER.cx + Math.cos(a) * CARRIER.R, z = CARRIER.cz + Math.sin(a) * CARRIER.R, heading = a + Math.PI;
+      return { x, z, rot: -a, vx: -Math.sin(a) * CARRIER.R * CARRIER.w, vz: Math.cos(a) * CARRIER.R * CARRIER.w };
+    }
+    function groundAt(x, z, t) {
+      if (CFG.carrier) {
+        const C = carrierAt(t), dx = x - C.x, dz = z - C.z, cs = Math.cos(C.rot), sn = Math.sin(C.rot), lx = dx * cs - dz * sn, lz = dx * sn + dz * cs;
+        if (Math.abs(lx) < CARRIER.wid / 2 && Math.abs(lz) < CARRIER.len / 2) return { h: CARRIER.deckY, surf: "carrier", vx: C.vx, vz: C.vz, lz };
+      }
+      for (const a of AIRPORTS) if (CFG.airports !== false && Math.abs(x - a.x) < a.w / 2 && Math.abs(z - a.z) < a.len / 2) return { h: a.h + 0.3, surf: "runway", vx: 0, vz: 0, ap: a };
+      const h = terrainH(x, z);
+      return h < 0 ? { h: 0, surf: "water", vx: 0, vz: 0 } : { h, surf: "grass", vx: 0, vz: 0 };
+    }
+    const SUN = new THREE.DirectionalLight(16773592, 2.4), HEMI = new THREE.HemisphereLight(12376562, 5069370, 1.3);
+    S.add(SUN, HEMI, SUN.target);
+    S.fog = new THREE.Fog(11127782, 1500, 9e3);
+    const stars = new THREE.Points((() => {
+      const g = new THREE.BufferGeometry(), p = new Float32Array(1500);
+      for (let i = 0; i < 500; i++) {
+        const a = Math.random() * TAU, e = Math.random() * 1.3 + 0.1, R2 = 7e3;
+        p[i * 3] = Math.cos(a) * Math.cos(e) * R2;
+        p[i * 3 + 1] = Math.sin(e) * R2;
+        p[i * 3 + 2] = Math.sin(a) * Math.cos(e) * R2;
+      }
+      g.setAttribute("position", new THREE.BufferAttribute(p, 3));
+      return g;
+    })(), new THREE.PointsMaterial({ color: 16777215, size: 14, fog: false, transparent: true }));
+    S.add(stars);
+    const cloudTex = (() => {
+      const cv = document.createElement("canvas");
+      cv.width = cv.height = 128;
+      const x = cv.getContext("2d");
+      for (let i = 0; i < 14; i++) {
+        const g = x.createRadialGradient(64 + (Math.random() - 0.5) * 50, 64 + (Math.random() - 0.5) * 26, 4, 64, 64, 40 + Math.random() * 20);
+        g.addColorStop(0, "rgba(255,255,255,.55)");
+        g.addColorStop(1, "rgba(255,255,255,0)");
+        x.fillStyle = g;
+        x.fillRect(0, 0, 128, 128);
+      }
+      return new THREE.CanvasTexture(cv);
+    })();
+    const clouds = [];
+    for (let i = 0; i < 70; i++) {
+      const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: cloudTex, transparent: true, depthWrite: false, color: 16777215 }));
+      const s = 500 + Math.random() * 700;
+      m.scale.set(s, s * 0.45, 1);
+      m.position.set((Math.random() - 0.5) * WORLD, 700 + Math.random() * 900, (Math.random() - 0.5) * WORLD);
+      S.add(m);
+      clouds.push(m);
+    }
+    const rainPts = (() => {
+      const n = 1500, g = new THREE.BufferGeometry(), p = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) {
+        p[i * 3] = (Math.random() - 0.5) * 300;
+        p[i * 3 + 1] = Math.random() * 200;
+        p[i * 3 + 2] = (Math.random() - 0.5) * 300;
+      }
+      g.setAttribute("position", new THREE.BufferAttribute(p, 3));
+      const o = new THREE.Points(g, new THREE.PointsMaterial({ color: 11191517, size: 1.2, transparent: true, opacity: 0.7 }));
+      o.visible = false;
+      S.add(o);
+      return o;
+    })();
+    let worldT = 0, dayHour = CFG.time, flashT = 0;
+    const WIND = V(1, 0, 0.4).normalize();
+    function applySky(dt) {
+      if (CFG.dayCycle) dayHour = (dayHour + dt * CFG.daySpeed / 60) % 24;
+      const ang = (dayHour - 6) / 12 * Math.PI, sunUp = Math.sin(ang), night = sstep(0.05, -0.25, sunUp), dusk = 1 - Math.abs(sunUp) > 0.8 ? sstep(0.75, 1, 1 - Math.abs(sunUp)) : 0;
+      SUN.position.set(Math.cos(ang) * 4e3, Math.sin(ang) * 4e3 + 200, 1500);
+      SUN.intensity = clamp(sunUp * 3, 0, 2.6) * (CFG.weather === "storm" ? 0.35 : CFG.weather === "fog" ? 0.6 : 1);
+      const day = new THREE.Color(CFG.weather === "storm" ? 6121589 : CFG.weather === "fog" ? 12568783 : CFG.weather === "clouds" ? 10467016 : 9356783), nightC = new THREE.Color(461848), duskC = new THREE.Color(15768156);
+      const sky = day.clone().lerp(duskC, dusk * 0.55 * (1 - night)).lerp(nightC, night);
+      if (flashT > 0) {
+        sky.lerp(new THREE.Color(16777215), flashT);
+        flashT = Math.max(0, flashT - dt * 3);
+      }
+      S.background = sky;
+      S.fog.color.copy(sky);
+      const fogFar = CFG.weather === "fog" ? 1500 : CFG.weather === "storm" ? 3800 : CFG.weather === "clouds" ? 7500 : 10500;
+      S.fog.near = CFG.weather === "fog" ? 60 : 500;
+      S.fog.far = fogFar;
+      HEMI.intensity = lerp(1.35, 0.28, night) * (CFG.weather === "storm" ? 0.6 : 1);
+      HEMI.color.setHex(night > 0.5 ? 4872842 : 12376562);
+      stars.material.opacity = night;
+      stars.visible = night > 0.05;
+      lightMat.color.setHex(night > 0.3 ? 16773296 : 7829350);
+      const cn = CFG.weather === "clear" ? 18 : CFG.weather === "clouds" ? 55 : 70;
+      clouds.forEach((m, i) => {
+        m.visible = i < cn;
+        m.material.color.setHex(CFG.weather === "storm" ? 7305089 : night > 0.5 ? 2765638 : 16777215);
+        m.position.x += WIND.x * CFG.wind * 20 * dt;
+        m.position.z += WIND.z * CFG.wind * 20 * dt;
+        if (m.position.x > HALF) m.position.x -= WORLD;
+        if (m.position.z > HALF) m.position.z -= WORLD;
+      });
+      rainPts.visible = CFG.weather === "storm";
+      if (rainPts.visible) {
+        rainPts.position.copy(cam.position);
+        rainPts.position.y -= 100;
+        const a = rainPts.geometry.attributes.position;
+        for (let i = 0; i < a.count; i++) {
+          let y = a.getY(i) - dt * 120;
+          if (y < 0) y += 200;
+          a.setY(i, y);
+        }
+        a.needsUpdate = true;
+        if (Math.random() < dt * 0.12) {
+          flashT = 0.9;
+          beep(60, 0.3, "sawtooth", 0.03);
+        }
+      }
+      seaMat.color.setHex(night > 0.5 ? 793898 : CFG.weather === "storm" ? 3428446 : 3108751);
+      for (const a of AIRPORTS) if (a.sock) {
+        a.sock.rotation.y = Math.atan2(WIND.x, WIND.z);
+      }
+      const C = carrierAt(worldT);
+      carrierG.position.set(C.x, 0, C.z);
+      carrierG.rotation.y = C.rot;
+    }
+    const tone = (skin, i, def) => {
+      const s = SKINS[skin];
+      return s && s.c ? s.c[i] : def;
+    };
+    function buildPlane(type, skin, team) {
+      const g = new THREE.Group(), P = PLANES[type];
+      const body = M(tone(skin, 0, { prop: 15262416, transport: 7108192, airliner: 15922422, fighter: 9279910 }[type]), 0.55, 0.25), wing = M(tone(skin, 1, { prop: 12729131, transport: 5923920, airliner: 14080992, fighter: 8029586 }[type]), 0.55, 0.3), acc = M(tone(skin, 2, { prop: 2768015, transport: 4015158, airliner: 2778055, fighter: 2830134 }[type]), 0.5, 0.3);
+      const glass = new THREE.MeshStandardMaterial({ color: 9425919, roughness: 0.1, metalness: 0.3, transparent: true, opacity: 0.45 }), dark = M(1908772, 0.6, 0.3);
+      const add = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0, p = g) => {
+        const o = new THREE.Mesh(geo, mat);
+        o.position.set(x, y, z);
+        o.rotation.set(rx, ry, rz);
+        p.add(o);
+        return o;
+      };
+      const cyl = (r1, r2, l, s = 10) => new THREE.CylinderGeometry(r1, r2, l, s);
+      const B = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+      const props = [], gear = new THREE.Group();
+      g.add(gear);
+      let seats = [], burner = null;
+      const wheel = (x, y, z, s = 1) => {
+        add(cyl(0.32 * s, 0.32 * s, 0.22 * s, 10), dark, x, y, z, 0, 0, Math.PI / 2, gear);
+        add(B(0.12 * s, Math.abs(y) * 1, 0.12 * s), dark, x, y / 2, z, 0, 0, 0, gear);
+      };
+      if (type === "prop") {
+        add(cyl(0.62, 0.5, 6.6), body, 0, 0, 0, Math.PI / 2);
+        add(cyl(0.5, 0.15, 1.2), acc, 0, 0, 3.85, Math.PI / 2);
+        add(B(10.6, 0.14, 1.55), wing, 0, 0.45, 0.6);
+        add(B(3.6, 0.1, 0.9), wing, 0, 0.1, -3.1);
+        add(B(0.1, 1.3, 1), wing, 0, 0.7, -3.2);
+        add(new THREE.SphereGeometry(0.62, 10, 6, 0, TAU, 0, Math.PI / 2), glass, 0, 0.42, 0.9).scale.set(1, 1, 1.6);
+        add(B(10.62, 0.15, 0.25), acc, 0, 0.46, 1.25);
+        const pr = new THREE.Group();
+        pr.position.set(0, 0, 4.5);
+        g.add(pr);
+        add(B(0.18, 2.4, 0.06), dark, 0, 0, 0, 0, 0, 0, pr);
+        add(B(2.4, 0.18, 0.06), dark, 0, 0, 0, 0, 0, 0, pr);
+        props.push(pr);
+        wheel(-1, -1.2, 0.6);
+        wheel(1, -1.2, 0.6);
+        wheel(0, -1.2, 3, 0.8);
+        seats = [[0, 0, 1.1], [0, 0, 0.1]];
+      }
+      if (type === "fighter") {
+        add(cyl(0.75, 0.45, 11, 10), body, 0, 0, 0, Math.PI / 2);
+        add(new THREE.ConeGeometry(0.55, 3, 10), body, 0, 0, 6.9, Math.PI / 2);
+        const wg = new THREE.Shape();
+        wg.moveTo(0, 2.4);
+        wg.lineTo(5.2, -2.2);
+        wg.lineTo(5.2, -3.1);
+        wg.lineTo(0, -2.4);
+        const wgeo = new THREE.ExtrudeGeometry(wg, { depth: 0.14, bevelEnabled: false });
+        for (const s of [-1, 1]) {
+          const w = add(wgeo, wing, 0, -0.05, -0.5, Math.PI / 2, 0, 0);
+          w.scale.x = s;
+          add(B(0.12, 2, 2), acc, s * 1.1, 1.2, -4.4, 0, 0, s * 0.25);
+          add(B(2.2, 0.1, 1.3), wing, s * 1.6, 0, -4.9);
+          add(B(0.7, 0.7, 2.4), dark, s * 0.95, -0.15, 1.2);
+        }
+        add(new THREE.SphereGeometry(0.55, 10, 6, 0, TAU, 0, Math.PI / 2), glass, 0, 0.45, 2.6).scale.set(1, 1, 3.2);
+        burner = add(new THREE.ConeGeometry(0.42, 2.4, 10), new THREE.MeshBasicMaterial({ color: 16753466, transparent: true, opacity: 0 }), 0, 0, -6.7, -Math.PI / 2);
+        wheel(-1.3, -1.4, -0.5);
+        wheel(1.3, -1.4, -0.5);
+        wheel(0, -1.4, 4.5, 0.8);
+        seats = [[0, 0.35, 3.3], [0, 0.45, 2.2]];
+      }
+      if (type === "airliner") {
+        add(cyl(2, 2, 30, 14), body, 0, 0, 0, Math.PI / 2);
+        add(new THREE.SphereGeometry(2, 14, 10), body, 0, 0, 15).scale.set(1, 0.95, 1.6);
+        add(new THREE.ConeGeometry(2, 7, 14), body, 0, 0.5, -18.4, -Math.PI / 2);
+        add(B(0.06, 0.5, 24), dark, 2, 0.55, 0);
+        add(B(0.06, 0.5, 24), dark, -2, 0.55, 0);
+        add(B(4.02, 0.25, 30.02), acc, 0, -0.6, 0);
+        add(B(2.2, 0.6, 0.06), dark, 0, 0.7, 17.5);
+        for (const s of [-1, 1]) {
+          const w = add(B(15, 0.3, 4.5), wing, s * 8.5, -0.9, 1, 0, s * -0.35, 0);
+          add(cyl(0.95, 0.85, 4, 12), acc, s * 6.5, -2.1, 3, Math.PI / 2);
+          add(B(5, 0.2, 2), wing, s * 3.3, 0.6, -17.2, 0, s * -0.3, 0);
+        }
+        add(B(0.3, 6, 4.5), acc, 0, 3.8, -16.8, -0.35, 0, 0);
+        wheel(-2.8, -3.1, 0, 1.5);
+        wheel(2.8, -3.1, 0, 1.5);
+        wheel(0, -3.1, 12, 1.2);
+        seats = [[0.6, 0.8, 15.6], [-0.6, 0.8, 15.6]];
+      }
+      if (type === "transport") {
+        add(cyl(2.3, 2.3, 22, 12), body, 0, 0, 0, Math.PI / 2);
+        add(new THREE.SphereGeometry(2.3, 12, 8), body, 0, 0, 11).scale.set(1, 0.9, 1.3);
+        add(new THREE.ConeGeometry(2.3, 7, 12), body, 0, 0.9, -14.4, -Math.PI / 2);
+        add(B(38, 0.4, 4.2), wing, 0, 2.3, 1.5);
+        for (const x of [-12, -6, 6, 12]) {
+          add(cyl(0.7, 0.6, 3.4, 10), acc, x, 1.6, 3.4, Math.PI / 2);
+          const pr = new THREE.Group();
+          pr.position.set(x, 1.6, 5.2);
+          g.add(pr);
+          add(B(0.2, 3.4, 0.08), dark, 0, 0, 0, 0, 0, 0, pr);
+          add(B(3.4, 0.2, 0.08), dark, 0, 0, 0, 0, 0, 0, pr);
+          props.push(pr);
+        }
+        add(B(0.3, 6, 4), wing, 0, 4.2, -14.5, -0.25, 0, 0);
+        add(B(12, 0.25, 3), wing, 0, 6.8, -15.5);
+        add(B(2.4, 0.7, 0.06), dark, 0, 1.2, 13.2);
+        wheel(-2.2, -2.8, 0, 1.4);
+        wheel(2.2, -2.8, 0, 1.4);
+        wheel(0, -2.8, 9, 1.1);
+        seats = [[0.6, 1.1, 12.2], [-0.6, 1.1, 12.2]];
+      }
+      const pilots = seats.map((s, i) => {
+        const sd = makeSoldier({ variant: team === 1 ? 1 : 0, seated: true });
+        sd.g.scale.setScalar(type === "airliner" || type === "transport" ? 0.75 : 0.62);
+        sd.g.position.set(s[0], s[1] - (type === "prop" ? 0.6 : type === "fighter" ? 0.55 : 0.7), s[2] - 0.25);
+        g.add(sd.g);
+        sd.g.visible = i === 0;
+        return sd;
+      });
+      const smoke = [];
+      g.userData = { props, gear, burner, pilots, type };
+      return g;
+    }
+    const RINGS = (() => {
+      const L = [];
+      const n = 14;
+      for (let i = 0; i < n; i++) {
+        const a = i / n * TAU + 0.3, R2 = 2100 + Math.sin(i * 1.7) * 500, x = Math.cos(a) * R2, z = Math.sin(a) * R2 * 0.85;
+        let gh = 0;
+        for (let a2 = 0; a2 < TAU; a2 += TAU / 8) for (const rr of [0, 250, 500]) gh = Math.max(gh, terrainH(x + Math.cos(a2) * rr, z + Math.sin(a2) * rr));
+        L.push(V(x, Math.max(0, gh) + 170 + i % 3 * 60, z));
+      }
+      for (let pass = 0; pass < 3; pass++) for (let i = 0; i < L.length; i++) {
+        const A = L[i], B = L[(i + 1) % L.length];
+        for (let t = 0; t <= 1; t += 0.05) {
+          const x = lerp(A.x, B.x, t), z = lerp(A.z, B.z, t), y = lerp(A.y, B.y, t), need = Math.max(0, terrainH(x, z)) + 140;
+          if (y < need) {
+            A.y += need - y;
+            B.y += need - y;
+          }
+        }
+      }
+      return L;
+    })();
+    const ringMeshes = RINGS.map((p, i) => {
+      const m = new THREE.Mesh(new THREE.TorusGeometry(38, 3, 8, 28), new THREE.MeshBasicMaterial({ color: 16765503, transparent: true, opacity: 0.9 }));
+      m.position.copy(p);
+      const nx = RINGS[(i + 1) % RINGS.length];
+      m.lookAt(nx);
+      S.add(m);
+      m.visible = false;
+      return m;
+    });
+    const QX = new THREE.Quaternion(), QY = new THREE.Quaternion(), QZ = new THREE.Quaternion(), AX = V(1, 0, 0), AY = V(0, 1, 0), AZ = V(0, 0, 1), tmpV = V(), tmpV2 = V();
+    const fwdOf = (q) => V(0, 0, 1).applyQuaternion(q), upOf = (q) => V(0, 1, 0).applyQuaternion(q), rightOf = (q) => V(-1, 0, 0).applyQuaternion(q);
+    const maxHp = (pl) => PLANES[pl.type].hp * (pl.armor ? 1.3 : 1);
+    function spawnPose(where, type) {
+      const P = PLANES[type];
+      if (where === "carrier" && CFG.carrier) {
+        const C = carrierAt(worldT);
+        const lz = -110, lx = 0, cs = Math.cos(-C.rot), sn = Math.sin(-C.rot);
+        const x = C.x + lx * cs - lz * sn, z = C.z + lx * sn + lz * cs;
+        const q = new THREE.Quaternion().setFromAxisAngle(AY, C.rot);
+        return { pos: V(x, CARRIER.deckY + P.gearH, z), q, v: 0, ground: true, gear: 1 };
+      }
+      const ap = AIRPORTS[where === "ap2" ? 1 : 0];
+      if (where === "air") {
+        const q = new THREE.Quaternion().setFromAxisAngle(AY, Math.random() * TAU);
+        return { pos: V(ap.x + (Math.random() - 0.5) * 600, ap.h + 700, ap.z + (Math.random() - 0.5) * 600), q, v: P.max * 0.7, ground: false, gear: 0 };
+      }
+      return { pos: V(ap.x + (Math.random() - 0.5) * 8, ap.h + 0.3 + P.gearH, ap.z - ap.len / 2 + 60 + Math.random() * 40), q: new THREE.Quaternion(), v: 0, ground: true, gear: 1 };
+    }
+    function newPlane(id, type, skin, team, where) {
+      const p = Object.assign({ id, type, skin, team, thr: 0, hp: PLANES[type].hp, alive: 1, eng: 1, gearStuck: 0, flares: PLANES[type].flares, missiles: PLANES[type].missiles, fire: 0, brake: 0, cool: 0, mcool: 0, lockT: 0, lockId: null, vy: 0, flareT: 0, respawnT: 0, landed: 0, repairT: 0, kills: 0, deaths: 0, ring: 0, lap: 0, raceT0: 0, raceT: 0, finished: 0, stopT: 0, gearAnim: 1 }, spawnPose(where, type));
+      return p;
+    }
+    function stepPlane(p, inp2, dt) {
+      const P = PLANES[p.type];
+      if (!p.alive) return null;
+      const thrustMul = (p.eng ? 1 : 0) * (p.engine ? 1.12 : 1) * (0.55 + 0.45 * clamp(p.hp / maxHp(p), 0, 1));
+      p.thr = clamp(p.thr + (inp2.thr || 0) * dt * 0.6, 0, 1);
+      if (inp2.thrSet != null) p.thr = inp2.thrSet;
+      const f = fwdOf(p.q), up = upOf(p.q), rt = rightOf(p.q);
+      const gnd = groundAt(p.pos.x, p.pos.z, worldT), gearH = p.gear && !p.gearStuck ? P.gearH : P.gearH * 0.35;
+      let event = null;
+      if (p.ground) {
+        const yaw = Math.atan2(f.x, f.z);
+        let pitch = Math.asin(clamp(f.y, -1, 1));
+        const steer2 = (inp2.yaw || 0) + (inp2.roll || 0) * 0.7;
+        const newYaw = yaw - steer2 * dt * clamp(p.v / 8, 0.15, 1) * (p.v > P.vr ? 0.15 : 0.8);
+        const fric = gnd.surf === "grass" ? 0.9 : gnd.surf === "water" ? 6 : 0.25, brake = inp2.brake || p.brakeHold ? gnd.surf === "carrier" && p.hook > 0 ? 26 : 7 : 0;
+        if (p.hook > 0) {
+          p.hook -= dt;
+        }
+        p.v += (P.thrust * p.thr * thrustMul - P.drag * p.v * p.v) * dt - (fric + brake) * dt * Math.sign(p.v);
+        if (p.v < 0) p.v = 0;
+        const want = p.v > P.vr * 0.8 ? clamp(inp2.pitch || 0, 0, 1) * 0.28 : 0;
+        pitch = lerp(pitch, want, Math.min(1, dt * 2.5));
+        p.q.setFromEuler(new THREE.Euler(-pitch, newYaw, 0, "YXZ"));
+        const f2 = fwdOf(p.q);
+        p.pos.x += (f2.x * p.v + gnd.vx) * dt;
+        p.pos.z += (f2.z * p.v + gnd.vz) * dt;
+        const g2 = groundAt(p.pos.x, p.pos.z, worldT);
+        p.pos.y = g2.h + gearH;
+        p.vy = 0;
+        if (g2.surf === "water") {
+          event = "crash";
+        }
+        if (p.gearStuck || !p.gear) {
+          if (p.v > 8 && CFG.damage) p.hp -= dt * 6;
+        }
+        if (p.v > P.vr && pitch > 0.07) {
+          p.ground = false;
+          p.pos.y += 0.4;
+          event = event || "takeoff";
+        }
+        if (g2.surf !== "carrier" && g2.surf !== "runway" && p.v > P.vr * 1.2 && gnd.surf === "grass" && CFG.damage) p.hp -= dt * 3;
+        p.onSurf = g2.surf;
+      } else {
+        const eff = clamp(p.v / (P.stall * 1.6), 0.15, 1);
+        let pitchIn = inp2.pitch || 0, rollIn = inp2.roll || 0, yawIn = inp2.yaw || 0;
+        QX.setFromAxisAngle(AX, -pitchIn * P.rp * eff * dt);
+        QZ.setFromAxisAngle(AZ, rollIn * P.rr * eff * dt);
+        QY.setFromAxisAngle(AY, -yawIn * P.ry * eff * dt);
+        p.q.multiply(QX).multiply(QZ).multiply(QY);
+        const rv = rightOf(p.q);
+        const bankTurn = rv.y * P.turn * eff * 1.4;
+        QY.setFromAxisAngle(AY, bankTurn * dt);
+        p.q.premultiply(QY);
+        const turb = CFG.turbulence * (CFG.weather === "storm" ? 2.4 : 1) * 0.25;
+        if (turb > 0) {
+          QX.setFromAxisAngle(AX, (Math.random() - 0.5) * turb * dt * 3);
+          QZ.setFromAxisAngle(AZ, (Math.random() - 0.5) * turb * dt * 4);
+          p.q.multiply(QX).multiply(QZ);
+        }
+        p.q.normalize();
+        const f2 = fwdOf(p.q);
+        const drag = P.drag * p.v * p.v * (1 + (p.gear ? 0.35 : 0) + (inp2.brake ? 0.8 : 0));
+        p.v += (P.thrust * p.thr * thrustMul - drag - 9.81 * f2.y * 0.9) * dt;
+        if (p.v < 0) p.v = 0;
+        const stall = clamp((P.stall - p.v) / P.stall, 0, 1);
+        if (stall > 0) {
+          QX.setFromAxisAngle(AX, stall * 1.2 * dt);
+          const fw = fwdOf(p.q);
+          if (fw.y > -0.9) p.q.multiply(QX);
+        }
+        const sink = stall * 14 + Math.max(0, 1 - upOf(p.q).y) * 2.5;
+        const wind = CFG.wind * (CFG.weather === "storm" ? 14 : 6);
+        p.pos.x += (f2.x * p.v + WIND.x * wind) * dt;
+        p.pos.y += (f2.y * p.v - sink) * dt;
+        p.pos.z += (f2.z * p.v + WIND.z * wind) * dt;
+        p.vy = f2.y * p.v - sink;
+        p.onSurf = null;
+        const g2 = groundAt(p.pos.x, p.pos.z, worldT);
+        if (p.pos.y - gearH <= g2.h) {
+          const e = new THREE.Euler().setFromQuaternion(p.q, "YXZ");
+          const pitch = -e.x, roll = e.z;
+          const soft = p.vy > -7 && Math.abs(roll) < 0.4 && pitch > -0.12 && pitch < 0.4;
+          if (g2.surf === "water") {
+            event = "crash";
+          } else if (soft && p.gear && !p.gearStuck && (g2.surf === "runway" || g2.surf === "carrier" || p.v < P.stall * 1.6)) {
+            p.ground = true;
+            p.pos.y = g2.h + gearH;
+            event = "land:" + g2.surf;
+            if (g2.surf === "carrier") {
+              p.hook = 4;
+            }
+          } else if (soft && (!p.gear || p.gearStuck) && p.v < P.max * 0.6) {
+            p.ground = true;
+            p.pos.y = g2.h + gearH;
+            event = "belly";
+            if (CFG.damage) p.hp -= maxHp(p) * 0.35;
+          } else if (!CFG.damage) {
+            p.ground = true;
+            p.pos.y = g2.h + gearH;
+            p.v *= 0.5;
+            event = "bounce";
+          } else event = "crash";
+        }
+        if (p.pos.y > 9e3) {
+          p.pos.y = 9e3;
+        }
+      }
+      if (Math.abs(p.pos.x) > HALF * 1.1 || Math.abs(p.pos.z) > HALF * 1.1) {
+        p.outT = (p.outT || 0) + dt;
+      } else p.outT = 0;
+      if (p.outT > 8) {
+        p.pos.x *= 0.995;
+        p.pos.z *= 0.995;
+      }
+      return event;
+    }
+    let myPlane = null, myRole = "pilot", coOf = null, giveCtrl = 0, myInp = { pitch: 0, roll: 0, yaw: 0, thr: 0, brake: 0 }, camMode = MEP.cam | 0, mouseDX = 0, mouseDY = 0, locked = false, menuOpen = 1, warnings = [], keysHeld = /* @__PURE__ */ new Set();
+    const inp = input(st, []);
+    const K = (k) => inp.has(k) || inp.has(k.toUpperCase());
+    function readControls(dt) {
+      let pitch = (K("s") || inp.has("ArrowDown") ? 1 : 0) - (K("z") || inp.has("ArrowUp") ? 1 : 0) + touchPitch;
+      let roll = (K("d") || inp.has("ArrowRight") ? 1 : 0) - (K("q") || inp.has("ArrowLeft") ? 1 : 0) + touchRoll;
+      const yaw = (K("e") ? 1 : 0) - (K("a") ? 1 : 0);
+      const thr = (inp.has("Shift") || K("+") || inp.has("=") ? 1 : 0) - (inp.has("Control") || K("-") ? 1 : 0) + touchThr;
+      if (locked && MEP.mouse) {
+        pitch += clamp(-mouseDY * 0.035 * MEP.sens, -1, 1);
+        roll += clamp(mouseDX * 0.035 * MEP.sens, -1, 1);
+      }
+      mouseDX *= Math.exp(-dt * 9);
+      mouseDY *= Math.exp(-dt * 9);
+      if (MEP.invert) pitch = -pitch;
+      return { pitch: clamp(pitch, -1, 1), roll: clamp(roll, -1, 1), yaw: clamp(yaw, -1, 1), thr: clamp(thr, -1, 1), brake: K("b") ? 1 : 0, fire: mouseFire || K("f") || inp.has(" ") || touchFire ? 1 : 0 };
+    }
+    let mouseFire = 0, touchRoll = 0, touchThr = 0, touchFire = 0, touchPitch = 0;
+    const onMouse = (e) => {
+      if (document.pointerLockElement !== c) return;
+      mouseDX = clamp(mouseDX + e.movementX * 0.06, -30, 30);
+      mouseDY = clamp(mouseDY + e.movementY * 0.06, -30, 30);
+    };
+    document.addEventListener("mousemove", onMouse);
+    const onDown = (e) => {
+      if (menuOpen) return;
+      if (document.pointerLockElement !== c && !("ontouchstart" in window)) {
+        try {
+          c.requestPointerLock();
+        } catch (x) {
+        }
+        return;
+      }
+      if (e.button === 0) mouseFire = 1;
+      if (e.button === 2) {
+        e.preventDefault();
+        fireMissile();
+      }
+    };
+    const onUp = (e) => {
+      if (e.button === 0) mouseFire = 0;
+    };
+    const onLock = () => {
+      locked = document.pointerLockElement === c;
+      if (!locked) mouseFire = 0;
+    };
+    c.addEventListener("mousedown", onDown);
+    document.addEventListener("mouseup", onUp);
+    document.addEventListener("pointerlockchange", onLock);
+    c.addEventListener("contextmenu", (e) => e.preventDefault());
+    const onKey = (e) => {
+      if (e.target && e.target.tagName === "INPUT" || e.target && e.target.tagName === "SELECT") return;
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if (k === "Escape") {
+        if (!menuOpen) openMenu("pause");
+        return;
+      }
+      if (menuOpen) return;
+      if (k === "Tab") {
+        e.preventDefault();
+        showBoard = !showBoard;
+      }
+      if (k === "g") toggleGear();
+      if (k === "c") {
+        camMode = (camMode + 1) % 3;
+        MEP.cam = camMode;
+        saveMe();
+      }
+      if (k === "x") dropFlares();
+      if (k === "r") fireMissile();
+      if (k === "i") tryRestart();
+      if (k === "k") toggleGive();
+      if (k === "m") showMap = !showMap;
+    };
+    addEventListener("keydown", onKey);
+    const ctl = E("div", "flctl");
+    st.append(ctl);
+    const tb = (lab, on, off2) => {
+      const b = E("button", "btn", lab);
+      b.type = "button";
+      b.onpointerdown = (e) => {
+        e.preventDefault();
+        on();
+      };
+      if (off2) {
+        b.onpointerup = b.onpointercancel = b.onpointerleave = () => off2();
+      }
+      ctl.append(b);
+      return b;
+    };
+    tb("◀", () => touchRoll = -1, () => touchRoll = 0);
+    tb("▲ neus", () => touchPitch = 1, () => touchPitch = 0);
+    tb("▼ neus", () => touchPitch = -1, () => touchPitch = 0);
+    tb("▶", () => touchRoll = 1, () => touchRoll = 0);
+    tb("➕ gas", () => touchThr = 1, () => touchThr = 0);
+    tb("➖ gas", () => touchThr = -1, () => touchThr = 0);
+    tb("🔥", () => touchFire = 1, () => touchFire = 0);
+    tb("🚀", () => fireMissile());
+    tb("✨", () => dropFlares());
+    tb("⚙️ G", () => toggleGear());
+    tb("🎥", () => {
+      camMode = (camMode + 1) % 3;
+    });
+    tb("☰", () => openMenu("pause"));
+    function toggleGear() {
+      if (!myPlane || !myPlane.alive) return;
+      if (myPlane.ground && myPlane.gear) {
+        say("Landingsgestel kan niet omhoog op de grond");
+        return;
+      }
+      if (myPlane.gearStuck) {
+        if (Math.random() < 0.3) {
+          myPlane.gearStuck = 0;
+          myPlane.gear = 1;
+          say("✅ Landingsgestel los — het is uitgeklapt!");
+        } else say("⚠️ Landingsgestel klemt nog… probeer opnieuw (G)");
+        return;
+      }
+      myPlane.gear = myPlane.gear ? 0 : 1;
+      beep(myPlane.gear ? 300 : 240, 0.15, "square", 0.03);
+      if (myPlane.gear && CFG.emergencies && CFG.gearFail && Math.random() < 0.06 * CFG.emergencyRate) {
+        myPlane.gear = 0;
+        myPlane.gearStuck = 1;
+        say("⚠️ NOODGEVAL: landingsgestel klemt! Druk een paar keer G of maak een buiklanding.", 6);
+      }
+      say(myPlane.gear ? "⬇️ Landingsgestel uit" : "⬆️ Landingsgestel in", 1.5);
+    }
+    function tryRestart() {
+      if (!myPlane || myPlane.eng) return;
+      if (Math.random() < 0.35) {
+        myPlane.eng = 1;
+        say("✅ Motor herstart!");
+      } else say("🔧 Motor slaat niet aan… blijf proberen (I)", 2);
+    }
+    function dropFlares() {
+      const pl = myRole === "co" ? null : myPlane;
+      if (myRole === "co" && coOf) {
+        net.send({ k: "co", a: "fl", to: coOf });
+        say("✨ Flares gevraagd aan de piloot", 1.5);
+        return;
+      }
+      if (!pl || !pl.alive || !CFG.flares) return;
+      if (pl.flares <= 0) {
+        say("Geen flares meer");
+        return;
+      }
+      pl.flares--;
+      pl.flareT = 1.4;
+      beep(900, 0.08, "triangle", 0.03);
+      addFlares(pl.pos);
+    }
+    const planes = /* @__PURE__ */ new Map();
+    const vis = /* @__PURE__ */ new Map();
+    const isBotId = (id) => net.isBot ? net.isBot(id) : String(id).startsWith("bot-");
+    const pname = (id) => {
+      const p = net.players.find((x) => x.id === id);
+      return p ? net.pname(p) : "?";
+    };
+    const teamOf = (id) => {
+      if (!CFG.teams) return 0;
+      const i = net.players.findIndex((x) => x.id === id);
+      return i % 2;
+    };
+    const enemies = (a, b) => a !== b && (!CFG.teams || teamOf(a) !== teamOf(b) || CFG.friendlyFire);
+    const weaponsOn = () => CFG.weapons && (CFG.mode === "dogfight" || CFG.freeWeapons);
+    const fx = [];
+    const glowMat = (c2) => new THREE.MeshBasicMaterial({ color: c2, transparent: true, depthWrite: false });
+    function addBoom(pos, size = 1) {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(6 * size, 12, 8), glowMat(16753210));
+      m.position.copy(pos);
+      S.add(m);
+      fx.push({ o: m, t: 1.1, k: "boom", s: size });
+      const d = cam.position.distanceTo(pos);
+      beep(70, 0.5, "sawtooth", clamp(0.12 - d / 9e3, 0.01, 0.1));
+    }
+    function addFlares(pos) {
+      for (let i = 0; i < 6; i++) {
+        const m = new THREE.Mesh(new THREE.SphereGeometry(1.4, 6, 4), glowMat(16773792));
+        m.position.copy(pos);
+        S.add(m);
+        fx.push({ o: m, t: 2.2, k: "flare", v: V((Math.random() - 0.5) * 30, -8 - Math.random() * 10, (Math.random() - 0.5) * 30) });
+      }
+    }
+    function addTracer(from, dir, len = 700) {
+      const g = new THREE.BufferGeometry().setFromPoints([from.clone().addScaledVector(dir, 20), from.clone().addScaledVector(dir, len)]);
+      const l = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 16769162, transparent: true }));
+      S.add(l);
+      fx.push({ o: l, t: 0.06, k: "tr" });
+    }
+    function addSmoke(pos, dark) {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(3, 6, 4), new THREE.MeshBasicMaterial({ color: dark ? 3355443 : 12303291, transparent: true, opacity: 0.5, depthWrite: false }));
+      m.position.copy(pos);
+      S.add(m);
+      fx.push({ o: m, t: 2.5, k: "smoke" });
+    }
+    function stepFx(dt) {
+      for (let i = fx.length - 1; i >= 0; i--) {
+        const f = fx[i];
+        f.t -= dt;
+        if (f.k === "boom") {
+          const k = 1 - f.t / 1.1;
+          f.o.scale.setScalar(1 + k * 3);
+          f.o.material.opacity = f.t;
+          f.o.material.color.setHex(k < 0.3 ? 16773280 : 9065776);
+        } else if (f.k === "flare") {
+          f.o.position.addScaledVector(f.v, dt);
+          f.o.material.opacity = clamp(f.t / 2.2, 0, 1);
+        } else if (f.k === "smoke") {
+          f.o.scale.multiplyScalar(1 + dt * 0.8);
+          f.o.material.opacity = clamp(f.t / 2.5, 0, 1) * 0.45;
+        } else f.o.material.opacity = clamp(f.t / 0.06, 0, 1);
+        if (f.t <= 0) {
+          S.remove(f.o);
+          f.o.geometry.dispose();
+          f.o.material.dispose();
+          fx.splice(i, 1);
+        }
+      }
+    }
+    function gunShot(p, shooterId) {
+      const f = fwdOf(p.q), from = p.pos.clone().addScaledVector(f, PLANES[p.type].r * 0.8);
+      const spread = isBotId(shooterId) ? [0.03, 0.018, 9e-3][CFG.botLevel | 0] : 6e-3;
+      f.x += (Math.random() - 0.5) * spread;
+      f.y += (Math.random() - 0.5) * spread;
+      f.z += (Math.random() - 0.5) * spread;
+      f.normalize();
+      let best2 = null, bt = 900;
+      for (const [id, q] of planes) {
+        if (id === shooterId || !q.alive || !enemies(shooterId, id)) continue;
+        const rel = q.pos.clone().sub(from), t = rel.dot(f);
+        if (t < 0 || t > bt) continue;
+        const miss = rel.addScaledVector(f, -t).length();
+        if (miss < PLANES[q.type].r * 0.75) {
+          best2 = id;
+          bt = t;
+        }
+      }
+      return { from, dir: f, hit: best2 };
+    }
+    const HOSTST = { mis: [], misSeq: 0, events: [], race: /* @__PURE__ */ new Map() };
+    function hostDamage(id, d, by, why) {
+      const q = planes.get(id);
+      if (!q || !q.alive) return;
+      if (!CFG.damage && why !== "crash") {
+        return;
+      }
+      q.hp -= d;
+      if (q.hp <= 0) {
+        q.hp = 0;
+        q.alive = 0;
+        q.deaths++;
+        q.respawnT = 5;
+        HOSTST.events.push(["boom", Math.round(q.pos.x), Math.round(q.pos.y), Math.round(q.pos.z), 2]);
+        const k = by && planes.get(by);
+        if (k && by !== id) {
+          k.kills++;
+          HOSTST.events.push(["kill", idxOf(by), idxOf(id)]);
+          if (!isBotId(by)) HOSTST.events.push(["rew", idxOf(by), 30, "Vliegtuig neergehaald"]);
+        } else HOSTST.events.push(["kill", -1, idxOf(id)]);
+      }
+    }
+    const idxOf = (id) => net.players.findIndex((x) => x.id === id);
+    function hostMissile(owner, target, seeker) {
+      const p = planes.get(owner), t = planes.get(target);
+      if (!p || !t || !p.alive) return;
+      const f = fwdOf(p.q);
+      HOSTST.mis.push({ id: ++HOSTST.misSeq, pos: p.pos.clone().addScaledVector(f, PLANES[p.type].r + 4), vel: f.multiplyScalar(Math.max(p.v + 60, 260)), owner, target, ttl: 11, lost: false, checked: false, turn: seeker ? 2 : 1.5 });
+    }
+    function hostStepMissiles(dt) {
+      for (const m of HOSTST.mis) {
+        m.ttl -= dt;
+        const t = planes.get(m.target);
+        if (t && t.alive && !m.lost) {
+          if (t.flareT > 0 && !m.checked && m.pos.distanceTo(t.pos) < 1600) {
+            m.checked = true;
+            if (Math.random() < 0.75) {
+              m.lost = true;
+              continue;
+            }
+          }
+          const want = t.pos.clone().sub(m.pos).normalize(), cur2 = m.vel.clone().normalize(), ang = cur2.angleTo(want), st2 = Math.min(1, m.turn * dt / Math.max(ang, 1e-4));
+          cur2.lerp(want, st2).normalize();
+          m.vel.copy(cur2.multiplyScalar(Math.min(380, m.vel.length() + 60 * dt)));
+        }
+        m.pos.addScaledVector(m.vel, dt);
+        if (t && t.alive && m.pos.distanceTo(t.pos) < PLANES[t.type].r + 14) {
+          hostDamage(m.target, 75 * CFG.dmgMul, m.owner, "missile");
+          HOSTST.events.push(["boom", Math.round(m.pos.x), Math.round(m.pos.y), Math.round(m.pos.z), 1.4]);
+          m.ttl = 0;
+        }
+        if (m.pos.y < Math.max(0, terrainH(m.pos.x, m.pos.z))) {
+          HOSTST.events.push(["boom", Math.round(m.pos.x), Math.round(m.pos.y), Math.round(m.pos.z), 1]);
+          m.ttl = 0;
+        }
+      }
+      HOSTST.mis = HOSTST.mis.filter((m) => m.ttl > 0);
+    }
+    function updateLock(p, dt) {
+      if (!weaponsOn() || !CFG.missiles || !PLANES[p.type].missiles) {
+        p.lockId = null;
+        p.lockT = 0;
+        return;
+      }
+      const f = fwdOf(p.q);
+      let best2 = null, bd = 1e9;
+      for (const [id, q] of planes) {
+        if (id === ME || !q.alive || !enemies(ME, id)) continue;
+        const rel = q.pos.clone().sub(p.pos), d = rel.length();
+        if (d > 2800) continue;
+        if (rel.normalize().dot(f) < Math.cos(0.38)) continue;
+        if (d < bd) {
+          bd = d;
+          best2 = id;
+        }
+      }
+      if (best2 && best2 === p.lockId) p.lockT += dt;
+      else {
+        p.lockId = best2;
+        p.lockT = 0;
+      }
+    }
+    function fireMissile() {
+      const p = myPlane;
+      if (!p || !p.alive || myRole !== "pilot") return;
+      if (!weaponsOn() || !CFG.missiles || !PLANES[p.type].missiles) {
+        say("Geen raketten in deze modus/dit vliegtuig", 1.5);
+        return;
+      }
+      if (p.missiles <= 0) {
+        say("Geen raketten meer — land om bij te tanken", 2);
+        return;
+      }
+      if (!p.lockId || p.lockT < 1.2) {
+        say("🎯 Nog geen doel vergrendeld (houd het doel in het midden)", 1.5);
+        return;
+      }
+      if (p.mcool > 0) return;
+      p.mcool = 1.2;
+      p.missiles--;
+      beep(220, 0.3, "sawtooth", 0.05);
+      say("🚀 Raket afgevuurd!", 1.2);
+      if (HOST) hostMissile(ME, p.lockId, hasUp("seeker"));
+      else net.send({ k: "mis", t: p.lockId, s: hasUp("seeker") ? 1 : 0 });
+    }
+    const BEH = ["patrol", "route", "circuit", "race", "escort", "dogfight"];
+    const BEHN = { auto: "Automatisch (past bij de modus)", patrol: "Rondvliegen", route: "Vaste route volgen", circuit: "Opstijgen en landen", race: "Racen", escort: "Spelers begeleiden", dogfight: "Luchtgevecht" };
+    const brain = /* @__PURE__ */ new Map();
+    function botType() {
+      const allowed = PKEYS.filter((k) => CFG.planes[k]);
+      if (!allowed.length) return "prop";
+      if (CFG.botPlane !== "mix" && CFG.planes[CFG.botPlane]) return CFG.botPlane;
+      if (CFG.mode === "dogfight" && allowed.includes("fighter")) return "fighter";
+      return allowed[Math.floor(Math.random() * allowed.length)];
+    }
+    function botBehavior(i) {
+      if (CFG.botBehavior !== "auto") return CFG.botBehavior;
+      if (CFG.mode === "dogfight") return "dogfight";
+      if (CFG.mode === "race") return "race";
+      return ["patrol", "circuit", "escort", "route"][i % 4];
+    }
+    function setBots() {
+      if (!HOST) return;
+      const humans = net.players.filter((p) => !isBotId(p.id)).length, want = CFG.bots ? clamp(CFG.botCount | 0, 0, Math.max(0, 8 - humans)) : 0;
+      let bots = net.players.filter((p) => isBotId(p.id));
+      while (bots.length > want) {
+        net.removeBot(bots[bots.length - 1].id);
+        bots = net.players.filter((p) => isBotId(p.id));
+      }
+      while (bots.length < want && net.players.length < 8) {
+        net.addBot();
+        bots = net.players.filter((p) => isBotId(p.id));
+      }
+    }
+    function ensureBotPlanes() {
+      if (!HOST) return;
+      let i = 0;
+      for (const pl of net.players) {
+        if (!isBotId(pl.id)) continue;
+        const beh = botBehavior(i++);
+        let p = planes.get(pl.id);
+        if (!p || p.bBeh !== beh) {
+          const type = botType();
+          p = newPlane(pl.id, type, SKEYS[1 + Math.floor(Math.random() * (SKEYS.length - 1))], teamOf(pl.id), beh === "circuit" ? "ap2" : "air");
+          p.bBeh = beh;
+          p.bot = 1;
+          planes.set(pl.id, p);
+          brain.set(pl.id, { beh, phase: p.ground ? "roll" : "fly", wp: null, t: 0, dir: 1, ap: AIRPORTS[1], ring: 0 });
+        }
+      }
+      for (const id of [...planes.keys()]) if (isBotId(id) && !net.players.some((p) => p.id === id)) {
+        planes.delete(id);
+        brain.delete(id);
+      }
+    }
+    const APCACHE = /* @__PURE__ */ new Map();
+    function apApproach(ap) {
+      if (APCACHE.has(ap)) return APCACHE.get(ap);
+      let best2 = null;
+      for (const ls of [1, -1]) {
+        const thr = V(ap.x, ap.h, ap.z - ls * ap.len / 2 + ls * 40);
+        let k = 0.05;
+        for (let d = 300; d <= 3600; d += 75) for (const lx of [-160, 0, 160]) {
+          const hh = terrainH(ap.x + lx, thr.z - ls * d) + 15 + d * 0.012;
+          k = Math.max(k, (hh - ap.h) / d);
+        }
+        if (!best2 || k < best2.k) best2 = { ls, thr, k };
+      }
+      const fapH = ap.h + Math.max(230, best2.k * 3e3 + 20);
+      const r2 = { ls: best2.ls, thr: best2.thr, fapH, fap: V(ap.x, fapH, best2.thr.z - best2.ls * 3e3) };
+      APCACHE.set(ap, r2);
+      return r2;
+    }
+    function steer(p, target, speedWant, opt = {}) {
+      const P = PLANES[p.type], qi = p.q.clone().invert(), L = target.clone().sub(p.pos).applyQuaternion(qi), dist = L.length();
+      L.normalize();
+      const ang = Math.atan2(-L.x, L.y), rv = rightOf(p.q), bank = Math.asin(clamp(-rv.y, -1, 1));
+      let roll, pitch;
+      let yaw = 0;
+      if (L.z > 0.985) {
+        roll = clamp(-bank * 2, -1, 1);
+        pitch = clamp(L.y * 6, -1, 1);
+        yaw = clamp(-L.x * 10, -1, 1);
+      } else {
+        roll = clamp(ang * 1.7, -1, 1);
+        pitch = Math.abs(ang) < 1.2 ? clamp(Math.hypot(L.x, L.y) * 3, 0, 1) : L.z < 0 ? 0.6 : 0.25;
+      }
+      const fw = fwdOf(p.q);
+      let thrSet = clamp(0.55 + (speedWant - p.v) * 0.03, 0, 1);
+      if (!opt.land) {
+        const fl = V(fw.x, 0, fw.z).normalize();
+        let need = Math.max(0, terrainH(p.pos.x, p.pos.z)) + (opt.low || 150);
+        for (const d of [200, 450, 800, 1300, 1900]) {
+          const h = Math.max(0, terrainH(p.pos.x + fl.x * d, p.pos.z + fl.z * d)) + 130;
+          if (h > need) need = h;
+        }
+        if (p.pos.y < need) {
+          pitch = clamp((need - p.pos.y) / 60, 0.35, 1);
+          roll = clamp(-bank * 2.5, -1, 1);
+          thrSet = 1;
+        }
+      }
+      if (p.v < P.stall * 1.15 && !p.ground) {
+        pitch = Math.min(pitch, -0.15);
+        thrSet = 1;
+        roll = clamp(-bank * 2, -1, 1);
+      }
+      return { pitch, roll, yaw, thrSet, dist };
+    }
+    function botThink(id, p, dt) {
+      const b = brain.get(id);
+      if (!b) return {};
+      const P = PLANES[p.type];
+      b.t += dt;
+      const randWp = () => {
+        const a = Math.random() * TAU, R2 = 500 + Math.random() * 2800, x = Math.cos(a) * R2, z = Math.sin(a) * R2;
+        return V(x, Math.max(0, terrainH(x, z)) + 400 + Math.random() * 900, z);
+      };
+      if (b.beh === "circuit") {
+        const ap = b.ap, A = apApproach(ap), ls = A.ls, thr = A.thr, headTo = (tx, tz) => {
+          const f = fwdOf(p.q), hd = Math.atan2(f.x, f.z), want = Math.atan2(tx - p.pos.x, tz - p.pos.z);
+          return Math.atan2(Math.sin(want - hd), Math.cos(want - hd));
+        };
+        if (p.ground) {
+          if (b.phase === "landed") {
+            b.wait = (b.wait || 0) + dt;
+            if (p.v > 1 || b.wait < 4) return { thrSet: 0, brake: 1 };
+            b.phase = "taxi";
+            b.wait = 0;
+          }
+          if (b.phase === "taxi") {
+            const err2 = headTo(thr.x, thr.z - ls * 15), d = Math.hypot(thr.x - p.pos.x, thr.z - ls * 15 - p.pos.z);
+            if (d < 25) {
+              b.phase = "line";
+              return { thrSet: 0, brake: 1 };
+            }
+            return { thrSet: p.v < 9 ? 0.35 : 0, brake: p.v > 11 ? 1 : 0, yaw: clamp(-err2 * 2, -1, 1), pitch: 0 };
+          }
+          if (b.phase === "line") {
+            const err2 = Math.atan2(Math.sin((ls > 0 ? 0 : Math.PI) - Math.atan2(fwdOf(p.q).x, fwdOf(p.q).z)), Math.cos((ls > 0 ? 0 : Math.PI) - Math.atan2(fwdOf(p.q).x, fwdOf(p.q).z)));
+            if (Math.abs(err2) > 0.06) return { thrSet: p.v < 3 ? 0.25 : 0, yaw: clamp(-err2 * 2, -1, 1) };
+            b.phase = "roll";
+          }
+          const err = Math.atan2(Math.sin((ls > 0 ? 0 : Math.PI) - Math.atan2(fwdOf(p.q).x, fwdOf(p.q).z)), Math.cos((ls > 0 ? 0 : Math.PI) - Math.atan2(fwdOf(p.q).x, fwdOf(p.q).z)));
+          b.phase = "roll";
+          return { thrSet: 1, yaw: clamp(-err * 3 - (ap.x - p.pos.x) * 0.03 * ls, -1, 1), pitch: p.v > P.vr ? 1 : 0, roll: 0 };
+        }
+        if (b.phase === "roll" || b.phase === "climb") {
+          b.phase = "climb";
+          if (p.pos.y - ap.h > 60 && p.gear) p.gear = 0;
+          const wp = V(ap.x + 600, A.fapH + 120, thr.z + ls * (ap.len + 1800));
+          const st2 = steer(p, wp, P.max * 0.6);
+          if (st2.dist < 450) b.phase = "down";
+          return st2;
+        }
+        if (b.phase === "down") {
+          if (p.gear) p.gear = 0;
+          const st2 = steer(p, A.fap, P.stall * 1.7);
+          if (st2.dist < 420) b.phase = "final";
+          return st2;
+        }
+        if (b.phase === "final") {
+          if (!p.gear) p.gear = 1;
+          const before = (thr.z - p.pos.z) * ls, aheadZ = p.pos.z + ls * Math.min(600, Math.max(120, before * 0.3 + 150)), dAim = (thr.z - aheadZ) * ls;
+          const aim = V(ap.x, Math.max(ap.h + 3 + (A.fapH - ap.h) * clamp(dAim / 3e3, 0, 1), dAim > 80 ? Math.max(0, terrainH(ap.x, aheadZ)) + 30 : 0), aheadZ);
+          const st2 = steer(p, aim, P.stall * 1.28, { land: true });
+          if (p.pos.y - ap.h < 14) {
+            st2.thrSet = 0;
+            const fy = fwdOf(p.q).y, agl = p.pos.y - ap.h - P.gearH, wantVy = -1.2 - agl * 0.22, wantFy = wantVy / Math.max(p.v, 1);
+            st2.pitch = clamp((wantFy - fy) * 14, -0.6, 0.6);
+            st2.roll = clamp(-Math.asin(clamp(-rightOf(p.q).y, -1, 1)) * 2.5, -1, 1);
+          }
+          if (Math.abs(p.pos.x - ap.x) > 200 || before < -ap.len * 0.7) {
+            b.phase = "climb";
+          }
+          return st2;
+        }
+        b.phase = "climb";
+        return {};
+      }
+      if (p.ground) {
+        return { thrSet: 1, pitch: p.v > P.vr ? 1 : 0 };
+      }
+      if (p.gear && p.pos.y - Math.max(0, terrainH(p.pos.x, p.pos.z)) > 80) p.gear = 0;
+      if (b.beh === "race") {
+        const tgt = RINGS[b.ring % RINGS.length];
+        const st2 = steer(p, tgt, P.max * 0.8, { low: 90 });
+        if (p.pos.distanceTo(tgt) < 55) {
+          b.ring++;
+          if (b.ring === 1) p.raceT0 = worldT;
+          if (b.ring >= RINGS.length * CFG.raceLaps + 1) {
+            hostFinish(id, worldT - p.raceT0);
+            b.ring = 0;
+          }
+        }
+        return st2;
+      }
+      if (b.beh === "escort") {
+        const humans = [...planes.values()].filter((q) => !q.bot && q.alive);
+        if (humans.length) {
+          const t = humans.reduce((a, q) => a && a.pos.distanceTo(p.pos) < q.pos.distanceTo(p.pos) ? a : q, null);
+          const f = fwdOf(t.q), r2 = rightOf(t.q), slot = t.pos.clone().addScaledVector(f, -70).addScaledVector(r2, 45 * (id.charCodeAt(4) % 2 ? 1 : -1)).add(V(0, 8, 0));
+          const st2 = steer(p, slot, t.v + clamp(p.pos.distanceTo(slot) * 0.08, -20, 40));
+          if (t.ground) {
+            b.beh2 = "patrol";
+          }
+          return st2;
+        }
+      }
+      if (b.beh === "dogfight" && weaponsOn()) {
+        let tgt = null, bd = 1e9;
+        for (const [qid, q] of planes) {
+          if (qid === id || !q.alive || !enemies(id, qid)) continue;
+          const d = q.pos.distanceTo(p.pos);
+          if (d < bd) {
+            bd = d;
+            tgt = [qid, q];
+          }
+        }
+        if (tgt) {
+          const [tid, q] = tgt, lead = q.pos.clone().addScaledVector(fwdOf(q.q), q.v * clamp(bd / 700, 0, 1.4) * [0.4, 0.7, 1][CFG.botLevel | 0]);
+          const st2 = steer(p, lead, P.max * 0.85);
+          const f = fwdOf(p.q), ang = f.angleTo(lead.clone().sub(p.pos));
+          b.cool = (b.cool || 0) - dt;
+          if (ang < [0.09, 0.06, 0.04][CFG.botLevel | 0] && bd < 850 && b.cool <= 0 && P.guns) {
+            b.cool = 0.08;
+            p.fireFx = 0.12;
+            const sh = gunShot(p, id);
+            if (sh.hit) hostDamage(sh.hit, 6 * CFG.dmgMul, id, "gun");
+          }
+          b.mt = (b.mt || 0) + dt;
+          if (CFG.missiles && p.missiles > 0 && ang < 0.35 && bd < 2600 && bd > 400 && b.mt > [14, 9, 6][CFG.botLevel | 0]) {
+            b.mt = 0;
+            p.missiles--;
+            hostMissile(id, tid, false);
+          }
+          if (CFG.flares && p.flares > 0 && HOSTST.mis.some((m) => m.target === id && m.pos.distanceTo(p.pos) < 1e3) && Math.random() < [0.02, 0.05, 0.1][CFG.botLevel | 0]) {
+            p.flares--;
+            p.flareT = 1.4;
+          }
+          return st2;
+        }
+      }
+      if (b.beh === "route") {
+        const pts = RINGS.map((v) => v.clone().add(V(0, 350, 0)));
+        const tgt = pts[(b.ring || 0) % pts.length];
+        const st2 = steer(p, tgt, P.max * 0.7);
+        if (p.pos.distanceTo(tgt) < 220) b.ring = (b.ring || 0) + 1;
+        return st2;
+      }
+      if (!b.wp || p.pos.distanceTo(b.wp) < 280 || b.t > 70) {
+        b.wp = randWp();
+        b.t = 0;
+      }
+      return steer(p, b.wp, P.max * 0.65);
+    }
+    function hostFinish(id, t) {
+      const best2 = HOSTST.race.get(id);
+      if (best2 == null || t < best2) HOSTST.race.set(id, t);
+      HOSTST.events.push(["fin", idxOf(id), Math.round(t * 10)]);
+      if (!isBotId(id)) HOSTST.events.push(["rew", idxOf(id), 50, "Race uitgevlogen"]);
+    }
+    const TYPEI = PKEYS, SKINI = SKEYS;
+    let sendT = 0, snapT = 0, cfgT = 0, coId = null, coCtl = null;
+    function packMe(p) {
+      let f = 0;
+      if (p.ground) f |= 1;
+      if (p.gear && !p.gearStuck) f |= 2;
+      if (p.fireFx > 0) f |= 4;
+      if (p.thr > 0.9) f |= 8;
+      if (p.flareT > 0) f |= 16;
+      if (!p.eng) f |= 32;
+      if (p.alive) f |= 64;
+      return [Math.round(p.pos.x * 10), Math.round(p.pos.y * 10), Math.round(p.pos.z * 10), Math.round(p.q.x * 1e3), Math.round(p.q.y * 1e3), Math.round(p.q.z * 1e3), Math.round(p.q.w * 1e3), Math.round(p.v), f, Math.round(p.hp), p.ring | 0, TYPEI.indexOf(p.type), SKINI.indexOf(p.skin), p.armor ? 1 : 0];
+    }
+    function unpackInto(p, a) {
+      p.tpos = V(a[0] / 10, a[1] / 10, a[2] / 10);
+      p.tq = new THREE.Quaternion(a[3] / 1e3, a[4] / 1e3, a[5] / 1e3, a[6] / 1e3).normalize();
+      p.v = a[7];
+      const f = a[8];
+      p.ground = !!(f & 1);
+      p.gear = f & 2 ? 1 : 0;
+      p.fireFx = f & 4 ? 0.12 : 0;
+      p.burner = !!(f & 8);
+      p.flareT = f & 16 ? 1 : 0;
+      p.eng = f & 32 ? 0 : 1;
+    }
+    const off = net.on((d, from) => {
+      if (!d || typeof d !== "object") return;
+      if (HOST) {
+        if (d.k === "p" && Array.isArray(d.s)) {
+          let p = planes.get(from);
+          const a = d.s, type = TYPEI[a[11]] || "prop";
+          if (!p || p.type !== type) {
+            p = newPlane(from, type, SKINI[a[12]] || "std", teamOf(from), "air");
+            p.hp = maxHp({ type, armor: a[13] });
+            planes.set(from, p);
+          }
+          p.armor = a[13];
+          unpackInto(p, a);
+          if (!p.pos || p.pos.distanceTo(p.tpos) > 300) p.pos = p.tpos.clone();
+          p.q.copy(p.tq);
+          p.pos.copy(p.tpos);
+          p.skin = SKINI[a[12]] || "std";
+          p.alive = a[8] & 64 ? p.alive || d.rs ? 1 : 0 : 0;
+          if (d.rs) {
+            p.alive = 1;
+            p.hp = maxHp(p);
+          }
+          if (p.alive) p.hp = Math.min(p.hp, a[9]);
+          p.ring = a[10];
+          return;
+        }
+        if (d.k === "hit") {
+          hostDamage(d.t, clamp(+d.d || 0, 0, 20), from, "gun");
+          return;
+        }
+        if (d.k === "mis") {
+          hostMissile(from, d.t, !!d.s);
+          return;
+        }
+        if (d.k === "crash") {
+          const p = planes.get(from);
+          if (p && p.alive) {
+            hostDamage(from, 1e6, null, "crash");
+          }
+          return;
+        }
+        if (d.k === "repair") {
+          const p = planes.get(from);
+          if (p) {
+            p.hp = maxHp(p);
+          }
+          return;
+        }
+        if (d.k === "fin") {
+          hostFinish(from, +d.t || 0);
+          return;
+        }
+        if (d.k === "co") {
+          const tp = planes.get(d.to);
+          if (tp && d.a === "join") tp.coIdx = idxOf(from);
+          if (tp && d.a === "leave") tp.coIdx = -1;
+          if (d.to === ME) handleCo(d, from);
+          else if (d.to) net.sendTo(d.to, { ...d, from });
+          return;
+        }
+      } else {
+        if (d.k === "S") applyState(d);
+        else if (d.k === "cfg") {
+          const before = CFG.mode;
+          CFG = Object.assign({}, DEFAULT_CFG, d.c);
+          if (menuOpen && menuTab) renderMenu();
+          if (before !== CFG.mode) say("Spelmodus: " + MODEN[CFG.mode], 3);
+        } else if (d.k === "co") handleCo(d, d.from || from);
+      }
+    });
+    function handleCo(d, from) {
+      if (d.a === "join") {
+        coId = from;
+        if (myPlane) myPlane.coIdx = idxOf(from);
+        say("🧑‍✈️ " + pname(from) + " vliegt mee als co-piloot · K = besturing geven", 4);
+      } else if (d.a === "leave") {
+        if (coId === from) {
+          coId = null;
+          coCtl = null;
+          giveCtrl = 0;
+        }
+      } else if (d.a === "fl") {
+        if (myPlane && myPlane.alive && myPlane.flares > 0) {
+          myPlane.flares--;
+          myPlane.flareT = 1.4;
+          addFlares(myPlane.pos);
+          say("✨ Co-piloot schiet flares af", 1.5);
+        }
+      } else if (d.a === "in" && giveCtrl && from === coId) {
+        coCtl = d.i;
+      } else if (d.a === "ctrl") {
+        if (myRole === "co") {
+          say(d.on ? "🕹️ Jij bestuurt nu het vliegtuig!" : "🕹️ De piloot neemt het weer over", 3);
+          coHasCtl = !!d.on;
+        }
+      }
+    }
+    let coHasCtl = false;
+    function toggleGive() {
+      if (myRole !== "pilot" || !coId) {
+        say(myRole === "co" ? "Alleen de piloot kan de besturing doorgeven" : "Er vliegt geen co-piloot mee", 2);
+        return;
+      }
+      giveCtrl = giveCtrl ? 0 : 1;
+      coCtl = null;
+      sendCo(coId, { a: "ctrl", on: giveCtrl });
+      say(giveCtrl ? "🕹️ Co-piloot bestuurt nu (K = terugnemen)" : "🕹️ Jij bestuurt weer", 2.5);
+    }
+    function sendCo(to, o) {
+      const m = { k: "co", to, ...o };
+      if (HOST) {
+        if (to === ME) handleCo(m, ME);
+        else net.sendTo(to, { ...m, from: ME });
+      } else net.send(m);
+    }
+    function hostSnapshot() {
+      var _a;
+      const P = [];
+      for (const pl of net.players) {
+        const p = planes.get(pl.id);
+        if (!p) continue;
+        let f = 0;
+        if (p.ground) f |= 1;
+        if (p.gear && !p.gearStuck) f |= 2;
+        if (p.fireFx > 0) f |= 4;
+        if (p.thr > 0.9 || p.burner) f |= 8;
+        if (p.flareT > 0) f |= 16;
+        if (!p.eng) f |= 32;
+        if (p.alive) f |= 64;
+        if (p.bot) f |= 128;
+        P.push([idxOf(pl.id), TYPEI.indexOf(p.type), SKINI.indexOf(p.skin), Math.round(p.pos.x * 10), Math.round(p.pos.y * 10), Math.round(p.pos.z * 10), Math.round(p.q.x * 1e3), Math.round(p.q.y * 1e3), Math.round(p.q.z * 1e3), Math.round(p.q.w * 1e3), Math.round(p.v), f, Math.round(p.hp), p.kills, p.deaths, (_a = p.coIdx) != null ? _a : -1, p.ring | 0]);
+      }
+      const R2 = [...HOSTST.race].sort((a, b) => a[1] - b[1]).slice(0, 10).map(([id, t]) => [idxOf(id), Math.round(t * 10)]);
+      return { k: "S", T: Math.round(worldT * 10), h: Math.round(dayHour * 100), P, M: HOSTST.mis.map((m) => [Math.round(m.pos.x), Math.round(m.pos.y), Math.round(m.pos.z)]), R: R2, E: HOSTST.events.splice(0, 20) };
+    }
+    let missVis = [], raceBoard = [], lastS = 0;
+    function applyState(d) {
+      lastS = performance.now();
+      worldT = d.T / 10;
+      if (!CFG.dayCycle || Math.abs(dayHour - d.h / 100) > 0.05) dayHour = d.h / 100;
+      const seen = /* @__PURE__ */ new Set();
+      for (const a of d.P) {
+        const pl = net.players[a[0]];
+        if (!pl) continue;
+        seen.add(pl.id);
+        if (pl.id === ME) {
+          if (myPlane) {
+            const alive = !!(a[11] & 64);
+            if (myPlane.alive && !alive) {
+              myPlane.alive = 0;
+              myPlane.respawnT = 5;
+              addBoom(myPlane.pos, 2);
+              say("💥 Neergestort! Terug in 5 s…", 5);
+            }
+            myPlane.hp = Math.min(myPlane.hp, a[12]);
+            myPlane.kills = a[13];
+            myPlane.deaths = a[14];
+          }
+          continue;
+        }
+        let p = planes.get(pl.id);
+        const type = TYPEI[a[1]] || "prop", skin = SKINI[a[2]] || "std";
+        if (!p || p.type !== type || p.skin !== skin) {
+          p = { id: pl.id, type, skin, team: teamOf(pl.id), pos: V(a[3] / 10, a[4] / 10, a[5] / 10), q: new THREE.Quaternion(), alive: 1 };
+          planes.set(pl.id, p);
+          const old = vis.get(pl.id);
+          if (old) {
+            S.remove(old.g);
+            vis.delete(pl.id);
+          }
+        }
+        p.tpos = V(a[3] / 10, a[4] / 10, a[5] / 10);
+        p.tq = new THREE.Quaternion(a[6] / 1e3, a[7] / 1e3, a[8] / 1e3, a[9] / 1e3).normalize();
+        p.v = a[10];
+        const f = a[11];
+        p.ground = !!(f & 1);
+        p.gear = f & 2 ? 1 : 0;
+        p.fireFx = f & 4 ? 0.12 : 0;
+        p.burner = !!(f & 8);
+        p.flareT = f & 16 ? 1 : 0;
+        p.eng = f & 32 ? 0 : 1;
+        p.alive = !!(f & 64);
+        p.bot = !!(f & 128);
+        p.hp = a[12];
+        p.kills = a[13];
+        p.deaths = a[14];
+        p.coIdx = a[15];
+        p.ring = a[16];
+      }
+      for (const id of [...planes.keys()]) if (id !== ME && !seen.has(id)) {
+        planes.delete(id);
+        const v = vis.get(id);
+        if (v) {
+          S.remove(v.g);
+          vis.delete(id);
+        }
+      }
+      missVis = d.M || [];
+      raceBoard = d.R || [];
+      (d.E || []).forEach(handleEvent);
+    }
+    function handleEvent(e) {
+      const [k] = e;
+      if (k === "boom") addBoom(V(e[1], e[2], e[3]), e[4]);
+      else if (k === "kill") {
+        const A = net.players[e[1]], B = net.players[e[2]];
+        if (B) say((A ? net.pname(A) + " ✖ " : "💥 ") + net.pname(B), 3);
+        if (B && B.id === ME) say("💥 Je bent neergehaald" + (A ? " door " + net.pname(A) : "") + "!", 4);
+      } else if (k === "rew") {
+        const A = net.players[e[1]];
+        if (A && A.id === ME) reward(e[2], e[3]);
+      } else if (k === "fin") {
+        const A = net.players[e[1]];
+        if (A) say("🏁 " + net.pname(A) + " finisht in " + fmtT(e[2] / 10), 4);
+      }
+    }
+    const fmtT = (t) => Math.floor(t / 60) + ":" + (t % 60).toFixed(1).padStart(4, "0");
+    function reward(a, why) {
+      if (!CFG.rewards) return;
+      MEP.money += a;
+      saveMe();
+      say("💰 +" + a + " · " + why, 2.5);
+      try {
+        STATS.addXp && STATS.addXp(Math.round(a / 5), why);
+      } catch (e) {
+      }
+    }
+    const offP = net.onPlayers(() => {
+      if (HOST) {
+        setBots();
+        ensureBotPlanes();
+        net.send({ k: "cfg", c: CFG });
+      }
+    });
+    function tagFor(id) {
+      const cv = document.createElement("canvas");
+      cv.width = 256;
+      cv.height = 48;
+      const x = cv.getContext("2d");
+      const bot = isBotId(id);
+      x.font = "bold 24px system-ui";
+      x.textAlign = "center";
+      x.lineWidth = 5;
+      x.strokeStyle = "#000b";
+      const t = (bot ? "🤖 " : "") + pname(id).slice(0, 18);
+      x.strokeText(t, 128, 32);
+      x.fillStyle = bot ? "#c9c9c9" : CFG.teams ? teamOf(id) ? "#ff9a8a" : "#9ad0ff" : "#ffe08a";
+      x.fillText(t, 128, 32);
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: false, transparent: true }));
+      s.scale.set(48, 9, 1);
+      s.renderOrder = 6;
+      S.add(s);
+      return s;
+    }
+    function syncVis(id, p, dt) {
+      let v = vis.get(id);
+      if (!v) {
+        const g = buildPlane(p.type, p.skin, teamOf(id));
+        S.add(g);
+        v = { g, tag: id === ME ? null : tagFor(id), smokeT: 0 };
+        vis.set(id, v);
+      }
+      if (p.tpos) {
+        const k = Math.min(1, dt * 10);
+        if (p.pos.distanceTo(p.tpos) > 400) p.pos.copy(p.tpos);
+        else p.pos.lerp(p.tpos, k);
+        p.q.slerp(p.tq, k);
+      }
+      v.g.visible = !!p.alive;
+      v.g.position.copy(p.pos);
+      v.g.quaternion.copy(p.q);
+      const u = v.g.userData;
+      for (const pr of u.props) pr.rotation.z += dt * (p.eng ? 6 + p.thr * 40 || 30 : 1);
+      u.gear.visible = !!p.gear;
+      if (u.burner) u.burner.material.opacity = p.burner || p.thr > 0.9 ? 0.85 : 0;
+      if (u.pilots[1]) u.pilots[1].g.visible = id === ME ? !!coId : p.coIdx != null && p.coIdx >= 0;
+      if (v.tag) {
+        v.tag.visible = !!p.alive;
+        v.tag.position.copy(p.pos).add(V(0, PLANES[p.type].r + 8, 0));
+        const d = cam.position.distanceTo(p.pos);
+        v.tag.scale.set(clamp(d * 0.055, 20, 140), clamp(d * 0.055, 20, 140) * 0.19, 1);
+      }
+      v.smokeT -= dt;
+      if (p.alive && (p.hp < maxHp(p) * 0.45 || !p.eng) && v.smokeT <= 0) {
+        v.smokeT = 0.12;
+        addSmoke(p.pos.clone().addScaledVector(fwdOf(p.q), -PLANES[p.type].r * 0.6), p.hp < maxHp(p) * 0.25);
+      }
+      if (p.fireFx > 0 && p.alive) {
+        p.fireFx -= dt;
+        if (Math.random() < 0.5) {
+          const f = fwdOf(p.q);
+          addTracer(p.pos.clone().addScaledVector(f, PLANES[p.type].r), f);
+        }
+      }
+      if (p.flareT > 0 && id !== ME && Math.random() < dt * 4) addFlares(p.pos);
+    }
+    const misMesh = [];
+    function drawMissiles() {
+      missVis.forEach((m, i) => {
+        let o = misMesh[i];
+        if (!o) {
+          o = new THREE.Mesh(new THREE.SphereGeometry(2.2, 6, 4), glowMat(16777215));
+          S.add(o);
+          misMesh[i] = o;
+        }
+        o.visible = true;
+        o.position.set(m[0], m[1], m[2]);
+        if (Math.random() < 0.5) addSmoke(o.position, false);
+      });
+      for (let i = missVis.length; i < misMesh.length; i++) misMesh[i].visible = false;
+    }
+    const MODEN = { free: "🌍 Vrij vliegen", dogfight: "⚔️ Luchtgevecht", race: "🏁 Luchtrace" }, MODED = { free: "Verken de wereld samen, oefen opstijgen en landen op vliegvelden en het vliegdekschip.", dogfight: "Haal andere vliegtuigen neer met de mitrailleur en raketten. Flares lokken raketten weg.", race: "Vlieg zo snel mogelijk door alle ringen. Je beste tijd komt op het scorebord." };
+    let menuEl = null, menuTab = "plane", showBoard = false, showMap = true;
+    function openMenu(kind) {
+      menuOpen = 1;
+      if (document.pointerLockElement === c) try {
+        document.exitPointerLock();
+      } catch (e) {
+      }
+      menuKind = kind;
+      renderMenu();
+    }
+    let menuKind = "start";
+    function closeMenu() {
+      if (menuEl) {
+        menuEl.remove();
+        menuEl = null;
+      }
+      menuOpen = 0;
+      try {
+        if (!("ontouchstart" in window)) c.requestPointerLock();
+      } catch (e) {
+      }
+    }
+    function sel(opts, cur2, onc, disabled) {
+      const s = document.createElement("select");
+      for (const [v, l] of opts) {
+        const o = document.createElement("option");
+        o.value = v;
+        o.textContent = l;
+        if (String(v) === String(cur2)) o.selected = true;
+        s.append(o);
+      }
+      s.disabled = !!disabled;
+      s.onchange = () => onc(s.value);
+      return s;
+    }
+    function row(label, ctrl) {
+      const r2 = E("div", "flrow");
+      const l = E("span");
+      l.textContent = label;
+      r2.append(l, ctrl);
+      return r2;
+    }
+    function chk(cur2, onc, disabled) {
+      const i = document.createElement("input");
+      i.type = "checkbox";
+      i.checked = !!cur2;
+      i.disabled = !!disabled;
+      i.onchange = () => onc(i.checked);
+      return i;
+    }
+    function rng(min, max, step, cur2, onc, disabled, fmt) {
+      const w = E("span");
+      const i = document.createElement("input");
+      i.type = "range";
+      i.min = min;
+      i.max = max;
+      i.step = step;
+      i.value = cur2;
+      i.disabled = !!disabled;
+      const b = E("b");
+      const sh = () => b.textContent = " " + (fmt ? fmt(+i.value) : i.value);
+      sh();
+      i.oninput = () => {
+        sh();
+        onc(+i.value);
+      };
+      w.append(i, b);
+      return w;
+    }
+    function setCfg(k, v) {
+      if (!HOST) return;
+      CFG[k] = v;
+      saveCfg();
+      net.send({ k: "cfg", c: CFG });
+      if (k === "bots" || k === "botCount") {
+        setBots();
+        ensureBotPlanes();
+      }
+      if (k === "botBehavior" || k === "botPlane" || k === "mode") {
+        for (const id of [...planes.keys()]) if (isBotId(id)) planes.delete(id);
+        ensureBotPlanes();
+      }
+    }
+    function renderMenu() {
+      if (menuEl) menuEl.remove();
+      menuEl = E("div", "flmenu");
+      const cd = E("div", "flcard");
+      menuEl.append(cd);
+      frame.append(menuEl);
+      cd.append(E("h2", "", menuKind === "pause" ? "⏸️ Pauze" : "✈️ Vliegen"));
+      cd.append(E("p", "flnote", (HOST ? "Jij bent de host: jij kiest de spelmodus en de instellingen voor de hele kamer." : "De host kiest de spelmodus en de instellingen. Jij kiest je vliegtuig.") + " 💰 " + MEP.money + (CFG.unlockAll ? " · 🔓 alles is vrij in deze kamer" : "")));
+      const tabs = E("div", "fltabs");
+      [["plane", "✈️ Vliegtuig"], ["mode", "🎮 Spelmodus"], ["set", "⚙️ Instellingen"], ["shop", "🛒 Winkel"], ["keys", "❓ Besturing"]].forEach(([k, l]) => {
+        const b = E("button", menuTab === k ? "on" : "", l);
+        b.onclick = () => {
+          menuTab = k;
+          renderMenu();
+        };
+        tabs.append(b);
+      });
+      cd.append(tabs);
+      const body = E("div");
+      cd.append(body);
+      if (menuTab === "plane") {
+        body.append(E("h3", "", "Kies je vliegtuig"));
+        const gr = E("div", "flgrid");
+        for (const k of PKEYS) {
+          const P = PLANES[k], allowed = CFG.planes[k], own = owns(k);
+          const b = E("button", "flopt" + (MEP.plane === k ? " on" : "") + (!own ? " lock" : ""), `<b>${P.e} ${P.n}</b><small>${P.d}</small><small>🚀 ${Math.round(P.max * 3.6)} km/u · 🔄 ${"★".repeat(Math.round(P.rr))} · ${P.guns ? "🔫 wapens" : "🕊️ geen wapens"}</small>` + (!allowed ? '<small class="pr">🚫 niet toegestaan in deze kamer</small>' : !own ? `<small class="pr">🔒 ${P.price} 💰 — klik om te kopen</small>` : ""));
+          b.disabled = !allowed;
+          b.onclick = () => {
+            if (!own) {
+              if (MEP.money >= P.price) {
+                MEP.money -= P.price;
+                MEP.owned.push(k);
+                saveMe();
+                say("🎉 " + P.n + " gekocht!");
+              } else {
+                say("Niet genoeg geld (" + P.price + " 💰 nodig)");
+                return renderMenu();
+              }
+            }
+            MEP.plane = k;
+            saveMe();
+            renderMenu();
+          };
+          gr.append(b);
+        }
+        body.append(gr);
+        body.append(E("h3", "", "Verf (skin)"));
+        const sg = E("div", "flgrid");
+        for (const k of SKEYS) {
+          const s = SKINS[k], own = owns(k);
+          const b = E("button", "flopt" + (MEP.skin === k ? " on" : "") + (!own ? " lock" : ""), `<b>${s.c ? '<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#' + s.c[0].toString(16).padStart(6, "0") + '"></span> ' : ""}${s.n}</b>` + (own ? "" : `<small class="pr">🔒 ${s.price} 💰</small>`));
+          b.onclick = () => {
+            if (!own) {
+              if (MEP.money >= s.price) {
+                MEP.money -= s.price;
+                MEP.owned.push(k);
+                saveMe();
+              } else {
+                say("Niet genoeg geld");
+                return;
+              }
+            }
+            MEP.skin = k;
+            saveMe();
+            renderMenu();
+          };
+          sg.append(b);
+        }
+        body.append(sg);
+        body.append(row("Startplaats", sel([["auto", "Volgens de kamer (" + { runway: "startbaan", air: "in de lucht", carrier: "vliegdekschip" }[CFG.spawn] + ")"], ["ap1", "🛫 Plaza Airport (lange baan)"], ["ap2", "⛰️ Bergveld (korte baan)"], ["carrier", "🚢 Vliegdekschip (moeilijk)"], ["air", "☁️ In de lucht"]], MEP.spawnAt, (v) => {
+          MEP.spawnAt = v;
+          saveMe();
+        })));
+        if (CFG.coPilot) {
+          const pilots = [...planes.values()].filter((p) => p.id !== ME && !isBotId(p.id) && p.alive);
+          if (pilots.length) {
+            body.append(E("h3", "", "🧑‍✈️ Of vlieg mee als co-piloot"));
+            const cg = E("div", "flgrid");
+            for (const p of pilots) {
+              const b = E("button", "flopt" + (myRole === "co" && coOf === p.id ? " on" : ""), `<b>${PLANES[p.type].e} ${esc(pname(p.id))}</b><small>Meekijken, flares afvuren en de besturing overnemen als de piloot K drukt.</small>`);
+              b.onclick = () => {
+                startCo(p.id);
+              };
+              cg.append(b);
+            }
+            body.append(cg);
+          }
+        }
+      }
+      if (menuTab === "mode") {
+        body.append(E("h3", "", "Spelmodus"));
+        const gr = E("div", "flgrid");
+        for (const k of ["free", "dogfight", "race"]) {
+          if (!CFG.modes[k]) continue;
+          const b = E("button", "flopt" + (CFG.mode === k ? " on" : ""), `<b>${MODEN[k]}</b><small>${MODED[k]}</small>`);
+          b.disabled = !HOST;
+          b.onclick = () => {
+            setCfg("mode", k);
+            renderMenu();
+          };
+          gr.append(b);
+        }
+        body.append(gr);
+        if (CFG.mode === "race") {
+          body.append(E("h3", "", "🏆 Beste tijden"));
+          body.append(E("div", "fl-list", boardHtml() || '<div class="flnote">Nog geen tijden. Vlieg door de gele ringen!</div>'));
+        }
+      }
+      if (menuTab === "set") {
+        const ro = !HOST;
+        body.append(E("h3", "", "Jouw besturing"));
+        body.append(row("Sturen met de muis", chk(MEP.mouse, (v) => {
+          MEP.mouse = v;
+          saveMe();
+        })));
+        body.append(row("Neus omhoog/omlaag omdraaien", chk(MEP.invert, (v) => {
+          MEP.invert = v;
+          saveMe();
+        })));
+        body.append(row("Muisgevoeligheid", rng(0.3, 2.5, 0.05, MEP.sens, (v) => {
+          MEP.sens = v;
+          saveMe();
+        }, false, (v) => v.toFixed(2) + "×")));
+        body.append(row("Camera", sel([[0, "Achtervolgen"], [1, "Cockpit"], [2, "Vast achter (horizon recht)"]], camMode, (v) => {
+          camMode = +v;
+          MEP.cam = camMode;
+          saveMe();
+        })));
+        body.append(E("h3", "", "Wereld" + (ro ? " (kiest de host)" : "")));
+        body.append(row("Weer", sel([["clear", "☀️ Helder"], ["clouds", "☁️ Bewolkt"], ["fog", "🌫️ Mist"], ["storm", "⛈️ Storm"]], CFG.weather, (v) => setCfg("weather", v), ro)));
+        body.append(row("Tijd van de dag", rng(0, 23.5, 0.5, dayHour, (v) => {
+          setCfg("time", v);
+          dayHour = v;
+        }, ro, (v) => Math.floor(v) + ":" + (v % 1 ? "30" : "00"))));
+        body.append(row("Dag en nacht laten wisselen", chk(CFG.dayCycle, (v) => setCfg("dayCycle", v), ro)));
+        body.append(row("Snelheid van de dag", rng(0.5, 20, 0.5, CFG.daySpeed, (v) => setCfg("daySpeed", v), ro, (v) => v + " min/s")));
+        body.append(row("Wind", rng(0, 1, 0.05, CFG.wind, (v) => setCfg("wind", v), ro, (v) => Math.round(v * 100) + "%")));
+        body.append(row("Turbulentie", rng(0, 1, 0.05, CFG.turbulence, (v) => setCfg("turbulence", v), ro, (v) => Math.round(v * 100) + "%")));
+        body.append(row("Vliegdekschip", chk(CFG.carrier, (v) => setCfg("carrier", v), ro)));
+        body.append(E("h3", "", "Schade en noodgevallen"));
+        body.append(row("Schade (crashes en treffers)", chk(CFG.damage, (v) => setCfg("damage", v), ro)));
+        body.append(row("Repareren op de startbaan/het schip", chk(CFG.repairs, (v) => setCfg("repairs", v), ro)));
+        body.append(row("Noodgevallen", chk(CFG.emergencies, (v) => setCfg("emergencies", v), ro)));
+        body.append(row("· Motorstoring", chk(CFG.engineFail, (v) => setCfg("engineFail", v), ro)));
+        body.append(row("· Landingsgestel klemt", chk(CFG.gearFail, (v) => setCfg("gearFail", v), ro)));
+        body.append(row("Hoe vaak noodgevallen", rng(0.2, 4, 0.1, CFG.emergencyRate, (v) => setCfg("emergencyRate", v), ro, (v) => v.toFixed(1) + "×")));
+        body.append(E("h3", "", "Wapens en gevecht"));
+        body.append(row("Wapens aan", chk(CFG.weapons, (v) => setCfg("weapons", v), ro)));
+        body.append(row("Ook wapens bij vrij vliegen", chk(CFG.freeWeapons, (v) => setCfg("freeWeapons", v), ro)));
+        body.append(row("Raketten", chk(CFG.missiles, (v) => setCfg("missiles", v), ro)));
+        body.append(row("Flares (tegenmaatregelen)", chk(CFG.flares, (v) => setCfg("flares", v), ro)));
+        body.append(row("Teams (blauw tegen rood)", chk(CFG.teams, (v) => setCfg("teams", v), ro)));
+        body.append(row("Eigen team raken", chk(CFG.friendlyFire, (v) => setCfg("friendlyFire", v), ro)));
+        body.append(row("Schade van wapens", rng(0.25, 3, 0.05, CFG.dmgMul, (v) => setCfg("dmgMul", v), ro, (v) => v.toFixed(2) + "×")));
+        body.append(E("h3", "", "Bots"));
+        body.append(row("Bots aan", chk(CFG.bots, (v) => setCfg("bots", v), ro)));
+        body.append(row("Aantal bots", rng(0, 7, 1, CFG.botCount, (v) => setCfg("botCount", v), ro, (v) => v + "")));
+        body.append(row("Moeilijkheid", sel([[0, "🟢 Makkelijk"], [1, "🟡 Normaal"], [2, "🔴 Moeilijk"]], CFG.botLevel, (v) => setCfg("botLevel", +v), ro)));
+        body.append(row("Gedrag", sel(Object.entries(BEHN), CFG.botBehavior, (v) => setCfg("botBehavior", v), ro)));
+        body.append(row("Vliegtuig van de bots", sel([["mix", "Gemengd"]].concat(PKEYS.map((k) => [k, PLANES[k].e + " " + PLANES[k].n])), CFG.botPlane, (v) => setCfg("botPlane", v), ro)));
+        body.append(E("h3", "", "Vliegtuigen, voortgang en modi"));
+        body.append(row("🔓 Alles meteen vrij (vliegtuigen, skins, upgrades)", chk(CFG.unlockAll, (v) => {
+          setCfg("unlockAll", v);
+          renderMenu();
+        }, ro)));
+        body.append(row("Geld verdienen", chk(CFG.rewards, (v) => setCfg("rewards", v), ro)));
+        body.append(row("Startgeld voor nieuwe spelers", rng(0, 5e3, 50, CFG.startMoney, (v) => setCfg("startMoney", v), ro, (v) => v + " 💰")));
+        for (const k of PKEYS) body.append(row("Toegestaan: " + PLANES[k].e + " " + PLANES[k].n, chk(CFG.planes[k], (v) => {
+          if (!HOST) return;
+          CFG.planes[k] = v;
+          if (!PKEYS.some((x) => CFG.planes[x])) CFG.planes.prop = true;
+          setCfg("planes", CFG.planes);
+        }, ro)));
+        for (const k of ["free", "dogfight", "race"]) body.append(row("Modus beschikbaar: " + MODEN[k], chk(CFG.modes[k], (v) => {
+          if (!HOST) return;
+          CFG.modes[k] = v;
+          if (!CFG.modes[CFG.mode]) CFG.modes[CFG.mode] = true;
+          setCfg("modes", CFG.modes);
+        }, ro)));
+        body.append(row("Co-piloot toestaan", chk(CFG.coPilot, (v) => setCfg("coPilot", v), ro)));
+        if (HOST) {
+          const rs = E("button", "flsec", "↺ Standaardinstellingen");
+          rs.onclick = () => {
+            CFG = Object.assign({}, DEFAULT_CFG, { modes: { ...DEFAULT_CFG.modes }, planes: { ...DEFAULT_CFG.planes } });
+            saveCfg();
+            net.send({ k: "cfg", c: CFG });
+            setBots();
+            ensureBotPlanes();
+            renderMenu();
+          };
+          body.append(rs);
+        }
+      }
+      if (menuTab === "shop") {
+        body.append(E("h3", "", "Upgrades"));
+        body.append(E("p", "flnote", "Verdien geld met landen (+20, vliegdekschip +60), races (+50) en luchtgevechten (+30 per treffer). " + (CFG.unlockAll ? "In deze kamer is alles al vrij!" : "")));
+        const gr = E("div", "flgrid");
+        for (const k of UKEYS) {
+          const u = UPG[k], own = hasUp(k);
+          const b = E("button", "flopt" + (own ? " on" : ""), `<b>${u.n}</b><small>${u.d}</small><small class="pr">${own ? "✅ in bezit" : u.price + " 💰"}</small>`);
+          b.onclick = () => {
+            if (own) return;
+            if (MEP.money < u.price) {
+              say("Niet genoeg geld");
+              return;
+            }
+            MEP.money -= u.price;
+            MEP.owned.push("up_" + k);
+            saveMe();
+            renderMenu();
+          };
+          gr.append(b);
+        }
+        body.append(gr);
+        const rs = E("button", "flsec", "🗑️ Mijn voortgang wissen");
+        rs.onclick = () => {
+          MEP.money = CFG.startMoney;
+          MEP.owned = ["prop", "std"];
+          MEP.plane = "prop";
+          MEP.skin = "std";
+          saveMe();
+          renderMenu();
+        };
+        body.append(rs);
+      }
+      if (menuTab === "keys") {
+        body.append(E("div", "flkeys", `<b>Klik in het beeld</b><span>muis vangen: muis = sturen (rollen en neus op/neer)</span><b>Z / ↑</b><span>neus omlaag</span><b>S / ↓</b><span>neus omhoog (optrekken)</span><b>Q / D of ← / →</b><span>rollen naar links / rechts</span><b>A / E</b><span>roer links / rechts (en sturen op de grond)</span><b>Shift / Ctrl</b><span>meer / minder gas (ook + en −)</span>
+   <b>G</b><span>landingsgestel in/uit</span><b>B</b><span>remmen (op de grond) / luchtremmen</span><b>Linksklik / spatie / F</b><span>mitrailleur</span><b>Rechtsklik / R</b><span>raket (eerst doel vergrendelen)</span><b>X</b><span>flares</span><b>I</b><span>motor herstarten na een storing</span><b>K</b><span>besturing geven aan je co-piloot</span><b>C</b><span>camera wisselen</span><b>Tab</b><span>scorebord</span><b>M</b><span>kaart aan/uit</span><b>Esc</b><span>menu / pauze</span>`));
+        body.append(E("p", "flnote", "🛫 Opstijgen: vol gas (Shift), wacht tot je snelheid boven de startsnelheid is, trek dan rustig op (S). Klap je landingsgestel in (G).<br>🛬 Landen: vlieg recht op de baan af, gas terug, landingsgestel uit, daal rustig (minder dan 7 m/s) met de vleugels recht. Rem met B. Stilstaan op de baan = repareren en bijtanken."));
+      }
+      const go = E("button", "flgo", menuKind === "pause" ? "▶ Verder vliegen" : "🛫 Opstijgen");
+      go.onclick = () => {
+        if (myRole === "co" && menuKind !== "pause") {
+          closeMenu();
+          return;
+        }
+        if (!myPlane || menuKind !== "pause" || myPlane.type !== MEP.plane || myPlane.skin !== MEP.skin) {
+          if (myRole === "co") stopCo();
+          spawnMe();
+        }
+        closeMenu();
+      };
+      cd.append(go);
+      if (menuKind === "pause") {
+        const rs = E("button", "flsec", "↺ Opnieuw beginnen op de startplaats");
+        rs.onclick = () => {
+          if (myRole === "co") stopCo();
+          spawnMe();
+          closeMenu();
+        };
+        cd.append(rs);
+        if (myRole === "co") {
+          const lv = E("button", "flsec", "🚪 Stoppen als co-piloot");
+          lv.onclick = () => {
+            stopCo();
+            spawnMe();
+            closeMenu();
+          };
+          cd.append(lv);
+        }
+      }
+    }
+    function boardHtml() {
+      return raceBoard.map((r2, i) => {
+        const p = net.players[r2[0]];
+        return p ? `<div>${["🥇", "🥈", "🥉"][i] || i + 1 + "."} ${esc(net.pname(p))} — ${fmtT(r2[1] / 10)}</div>` : "";
+      }).join("");
+    }
+    function startCo(pid) {
+      if (myPlane) {
+        myPlane = null;
+        const v = vis.get(ME);
+        if (v) {
+          S.remove(v.g);
+          vis.delete(ME);
+        }
+        planes.delete(ME);
+      }
+      myRole = "co";
+      coOf = pid;
+      coHasCtl = false;
+      sendCo(pid, { a: "join" });
+      say("🧑‍✈️ Je vliegt mee met " + pname(pid) + " · X = flares", 4);
+      closeMenu();
+    }
+    function stopCo() {
+      if (coOf) sendCo(coOf, { a: "leave" });
+      myRole = "pilot";
+      coOf = null;
+      coHasCtl = false;
+    }
+    function spawnMe() {
+      const where = MEP.spawnAt !== "auto" ? MEP.spawnAt : CFG.spawn === "carrier" ? "carrier" : CFG.spawn === "air" ? "air" : "ap1";
+      let type = MEP.plane;
+      if (!CFG.planes[type] || !owns(type)) type = PKEYS.find((k) => CFG.planes[k] && owns(k)) || "prop";
+      const skin = owns(MEP.skin) ? MEP.skin : "std";
+      const old = vis.get(ME);
+      if (old) {
+        S.remove(old.g);
+        vis.delete(ME);
+      }
+      myPlane = newPlane(ME, type, skin, teamOf(ME), where);
+      myPlane.armor = hasUp("armor");
+      myPlane.engine = hasUp("engine");
+      myPlane.hp = maxHp(myPlane);
+      if (hasUp("flare")) myPlane.flares = Math.round(myPlane.flares * 1.5);
+      planes.set(ME, myPlane);
+      myPlane.ring = 0;
+      myPlane.justSpawned = 1;
+      say(PLANES[type].e + " " + PLANES[type].n + " · " + (where === "air" ? "in de lucht" : "vol gas met Shift om op te stijgen"), 4);
+    }
+    function drawHeading(head) {
+      const x = hHdg;
+      x.clearRect(0, 0, 260, 30);
+      x.fillStyle = "#9ff0ff";
+      x.strokeStyle = "#9ff0ff";
+      x.font = "bold 11px system-ui";
+      x.textAlign = "center";
+      const deg = (head * 180 / Math.PI + 360) % 360;
+      for (let d = -60; d <= 60; d += 5) {
+        const a = Math.round(deg / 5) * 5 + d, px = 130 + (a - deg) * 2;
+        if (px < 0 || px > 260) continue;
+        const aa = (a + 360) % 360;
+        x.fillRect(px, 0, 1, aa % 15 ? 5 : 9);
+        if (aa % 45 === 0) x.fillText({ 0: "N", 45: "NO", 90: "O", 135: "ZO", 180: "Z", 225: "ZW", 270: "W", 315: "NW" }[aa], px, 22);
+        else if (aa % 15 === 0) {
+          x.font = "9px system-ui";
+          x.fillText(aa, px, 21);
+          x.font = "bold 11px system-ui";
+        }
+      }
+      x.fillStyle = "#ffd166";
+      x.fillRect(129, 0, 2, 30);
+    }
+    function drawHorizon(p) {
+      const x = ahX, R2 = 55;
+      x.save();
+      x.clearRect(0, 0, 110, 110);
+      const e = new THREE.Euler().setFromQuaternion(p.q, "YXZ");
+      x.translate(R2, R2);
+      x.rotate(e.z);
+      const pp = -e.x * R2 * 1.2;
+      x.fillStyle = "#3d7cc4";
+      x.fillRect(-90, -90 + pp * -1, 180, 90);
+      x.fillStyle = "#7a5a32";
+      x.fillRect(-90, pp * -1, 180, 90);
+      x.strokeStyle = "#fff";
+      x.lineWidth = 1.5;
+      x.beginPath();
+      x.moveTo(-60, -pp);
+      x.lineTo(60, -pp);
+      x.stroke();
+      for (let k = -2; k <= 2; k++) if (k) {
+        x.beginPath();
+        x.moveTo(-14, -pp - k * 14);
+        x.lineTo(14, -pp - k * 14);
+        x.stroke();
+      }
+      x.restore();
+      x.strokeStyle = "#ffd166";
+      x.lineWidth = 3;
+      x.beginPath();
+      x.moveTo(25, 55);
+      x.lineTo(45, 55);
+      x.moveTo(65, 55);
+      x.lineTo(85, 55);
+      x.stroke();
+      x.fillStyle = "#ffd166";
+      x.fillRect(53, 53, 4, 4);
+    }
+    const mapImg = (() => {
+      const cv = document.createElement("canvas");
+      cv.width = cv.height = 150;
+      const x = cv.getContext("2d"), im = x.createImageData(150, 150);
+      for (let j = 0; j < 150; j++) for (let i = 0; i < 150; i++) {
+        const wx = (i / 150 - 0.5) * WORLD, wz = (j / 150 - 0.5) * WORLD, h = terrainH(wx, wz), o = (j * 150 + i) * 4;
+        const c2 = h < 0 ? [40, 95, 125] : h < 5 ? [205, 190, 140] : h < 200 ? [80, 130, 60] : h < 550 ? [110, 115, 75] : h < 900 ? [130, 118, 105] : [230, 236, 240];
+        im.data[o] = c2[0];
+        im.data[o + 1] = c2[1];
+        im.data[o + 2] = c2[2];
+        im.data[o + 3] = 255;
+      }
+      x.putImageData(im, 0, 0);
+      x.fillStyle = "#fff";
+      for (const a of AIRPORTS) {
+        const px = (a.x / WORLD + 0.5) * 150, pz = (a.z / WORLD + 0.5) * 150;
+        x.fillRect(px - 1.5, pz - a.len / WORLD * 75, 3, a.len / WORLD * 150);
+      }
+      return cv;
+    })();
+    function drawMap(p) {
+      const x = mapX;
+      x.save();
+      x.clearRect(0, 0, 150, 150);
+      x.beginPath();
+      x.arc(75, 75, 73, 0, TAU);
+      x.clip();
+      const z = 2.4, cx = (p.pos.x / WORLD + 0.5) * 150, cz = (p.pos.z / WORLD + 0.5) * 150;
+      x.translate(75, 75);
+      x.scale(z, z);
+      x.translate(-cx, -cz);
+      x.drawImage(mapImg, 0, 0);
+      if (CFG.carrier) {
+        const C = carrierAt(worldT);
+        x.fillStyle = "#ddd";
+        x.fillRect((C.x / WORLD + 0.5) * 150 - 1.2, (C.z / WORLD + 0.5) * 150 - 1.2, 2.4, 2.4);
+      }
+      if (CFG.mode === "race") {
+        RINGS.forEach((rp, i) => {
+          x.fillStyle = i === p.ring % RINGS.length ? "#6f6" : "#ffd23f";
+          x.beginPath();
+          x.arc((rp.x / WORLD + 0.5) * 150, (rp.z / WORLD + 0.5) * 150, i === p.ring % RINGS.length ? 1.6 : 0.9, 0, TAU);
+          x.fill();
+        });
+      }
+      for (const [id, q] of planes) {
+        if (id === ME || !q.alive) continue;
+        x.fillStyle = isBotId(id) ? "#bbb" : CFG.teams && teamOf(id) !== teamOf(ME) ? "#ff6b5a" : "#ffe08a";
+        x.beginPath();
+        x.arc((q.pos.x / WORLD + 0.5) * 150, (q.pos.z / WORLD + 0.5) * 150, 1.3, 0, TAU);
+        x.fill();
+      }
+      x.restore();
+      const f = fwdOf(p.q);
+      x.save();
+      x.translate(75, 75);
+      x.rotate(Math.atan2(f.x, -f.z) * -1 + Math.PI);
+      x.fillStyle = "#fff";
+      x.beginPath();
+      x.moveTo(0, -6);
+      x.lineTo(4, 4);
+      x.lineTo(0, 1);
+      x.lineTo(-4, 4);
+      x.closePath();
+      x.fill();
+      x.restore();
+      x.fillStyle = "#fff";
+      x.font = "bold 10px system-ui";
+      x.textAlign = "center";
+      x.fillText("N", 75, 11);
+    }
+    let hudT = 0;
+    function updateHud(p, dt) {
+      const P = PLANES[p.type];
+      const e = fwdOf(p.q), head = Math.atan2(e.x, e.z);
+      drawHeading(-head + Math.PI);
+      drawHorizon(p);
+      if (showMap) drawMap(p);
+      mapC.style.display = showMap ? "" : "none";
+      hudT -= dt;
+      if (hudT > 0) return;
+      hudT = 0.1;
+      const gh = groundAt(p.pos.x, p.pos.z, worldT).h, agl = p.pos.y - gh;
+      hSpd.textContent = Math.round(p.v * 3.6);
+      hAlt.textContent = Math.round(p.pos.y);
+      const hpP = clamp(p.hp / maxHp(p), 0, 1), gearTxt = p.gearStuck ? '<span style="color:#ff6b5a">⚠️ KLEMT</span>' : p.gear ? '<span style="color:#7ff0a8">⬇️ UIT</span>' : "⬆️ IN";
+      const thrP = p.thr || 0;
+      hBot.innerHTML = `⛽ gas ${Math.round(thrP * 100)}% <span class="fl-bar"><i style="width:${thrP * 100}%"></i></span> · ⚙️ ${gearTxt} · ❤ <span class="fl-bar"><i style="width:${hpP * 100}%;background:${hpP > 0.5 ? "#7ff0a8" : hpP > 0.25 ? "#ffd166" : "#ff6b5a"}"></i></span>` + (weaponsOn() && P.guns ? ` · 🚀 ${p.missiles || 0} · ✨ ${p.flares || 0}` : CFG.flares && p.flares ? ` · ✨ ${p.flares}` : "") + ` · ↕ ${(p.vy || 0).toFixed(1)} m/s · 💰 ${MEP.money}`;
+      const w = [];
+      if (!p.ground && p.v < P.stall * 1.08) w.push("OVERTREK!");
+      if (!p.ground && agl < 90 && (p.vy || 0) < -12) w.push("TREK OP!");
+      if (!p.eng) w.push("MOTORSTORING · druk I");
+      if (p.gearStuck) w.push("LANDINGSGESTEL KLEMT");
+      if (hpP < 0.25 && p.alive) w.push("ZWAAR BESCHADIGD");
+      if (HOSTST.mis.some((m) => m.target === ME) || !HOST && (missVis || []).some((m) => Math.hypot(m[0] - p.pos.x, m[1] - p.pos.y, m[2] - p.pos.z) < 1300)) w.push("RAKET! · X = flares");
+      hWarn.textContent = w.join(" · ");
+      if (msgT > 0) {
+        msgT -= 0.1;
+        if (msgT <= 0) hMsg.textContent = "";
+      }
+      const name = net.players.find((x) => x.id === ME) || {};
+      let top = `<b>${MODEN[CFG.mode]}</b><br>${P.e} ${P.n}` + (myRole === "co" ? " · 🧑‍✈️ co-piloot" : "") + (coId ? " · 🧑‍✈️ " + esc(pname(coId)) + (giveCtrl ? " stuurt" : "") : "");
+      if (p.onSurf === "runway" || p.onSurf === "carrier") top += `<br>🛬 op de ${p.onSurf === "carrier" ? "vliegdekschip" : "startbaan"}` + (p.v < 3 && CFG.repairs ? " · 🔧 repareren…" : "");
+      if (CFG.mode === "race") {
+        const n = RINGS.length * CFG.raceLaps;
+        top += `<br>🏁 ring ${Math.min(p.ring, n)}/${n}` + (p.ring > 0 ? " · ⏱ " + fmtT(worldT - p.raceT0) : "") + (p.bestT ? " · beste " + fmtT(p.bestT) : "");
+      }
+      if (CFG.mode === "dogfight") top += `<br>⚔️ ${p.kills || 0} neergehaald · 💀 ${p.deaths || 0}`;
+      hTop.innerHTML = top;
+      const rows = net.players.map((pl) => {
+        const q = planes.get(pl.id);
+        if (!q) return "";
+        const d = pl.id === ME ? "jij" : Math.round(q.pos.distanceTo(p.pos) / 100) / 10 + " km";
+        return `<div>${isBotId(pl.id) ? "🤖" : "👤"} ${esc(net.pname(pl))} · ${PLANES[q.type].e} · ${d}${CFG.mode === "dogfight" ? " · ✖" + (q.kills || 0) : ""}</div>`;
+      });
+      hTopR.innerHTML = '<div class="fl-list">' + (showBoard && CFG.mode === "race" ? "<b>🏆 Beste tijden</b>" + boardHtml() : showBoard && CFG.mode === "dogfight" ? "<b>⚔️ Scorebord</b>" + [...planes.values()].sort((a, b) => (b.kills || 0) - (a.kills || 0)).map((q) => `<div>${esc(pname(q.id))} · ✖ ${q.kills || 0} · 💀 ${q.deaths || 0}</div>`).join("") : rows.join("")) + "</div>";
+      sc.textContent = MODEN[CFG.mode] + " · " + net.players.length + " in de lucht · Tab = scorebord · Esc = menu";
+    }
+    function drawLock(p) {
+      if (!p.lockId || !weaponsOn()) {
+        hLock.style.display = "none";
+        return;
+      }
+      const q = planes.get(p.lockId);
+      if (!q) {
+        hLock.style.display = "none";
+        return;
+      }
+      const v = q.pos.clone().project(cam);
+      if (v.z > 1) {
+        hLock.style.display = "none";
+        return;
+      }
+      const R2 = c.getBoundingClientRect(), fr = frame.getBoundingClientRect();
+      hLock.style.display = "block";
+      hLock.style.left = (v.x + 1) / 2 * R2.width + (R2.left - fr.left) + "px";
+      hLock.style.top = (1 - v.y) / 2 * R2.height + (R2.top - fr.top) + "px";
+      hLock.style.borderColor = p.lockT > 1.2 ? "#ff4b3a" : "#ffd166";
+      hLock.style.borderRadius = p.lockT > 1.2 ? "0" : "50%";
+    }
+    const camPos = V(0, 200, -200), camLook = V();
+    function updateCamera(p, dt) {
+      const P = PLANES[p.type], f = fwdOf(p.q), u = upOf(p.q);
+      if (camMode === 1) {
+        const seat = p.pos.clone().addScaledVector(f, { prop: 1.4, fighter: 3.6, airliner: 15.8, transport: 12.6 }[p.type]).addScaledVector(u, { prop: 0.75, fighter: 0.9, airliner: 1.4, transport: 1.6 }[p.type]);
+        cam.position.copy(seat);
+        cam.up.copy(u);
+        cam.lookAt(seat.clone().addScaledVector(f, 100));
+        return;
+      }
+      const [dist, h] = P.cam;
+      const flatF = V(f.x, 0, f.z).normalize();
+      const want = camMode === 2 ? p.pos.clone().addScaledVector(flatF, -dist).add(V(0, h, 0)) : p.pos.clone().addScaledVector(f, -dist).addScaledVector(u, h);
+      camPos.lerp(want, Math.min(1, dt * (camMode === 2 ? 3 : 5)));
+      if (camPos.distanceTo(want) > dist * 6) camPos.copy(want);
+      const g = Math.max(0, groundAt(camPos.x, camPos.z, worldT).h);
+      if (camPos.y < g + 2) camPos.y = g + 2;
+      cam.position.copy(camPos);
+      cam.up.lerp(camMode === 2 ? V(0, 1, 0) : u, Math.min(1, dt * 4)).normalize();
+      camLook.copy(p.pos).addScaledVector(f, P.r * 2);
+      cam.lookAt(camLook);
+    }
+    let emergT = 0, landRewardT = 0, lastGround = false;
+    function localStep(dt) {
+      const p = myPlane;
+      if (!p) return;
+      if (!p.alive) {
+        p.respawnT -= dt;
+        if (p.respawnT <= 0) {
+          spawnMe();
+          if (!HOST) net.send({ k: "p", s: packMe(myPlane), rs: 1 });
+        }
+        return;
+      }
+      let ctl2 = menuOpen ? { pitch: 0, roll: 0, yaw: 0, thr: 0, brake: 0, fire: 0 } : readControls(dt);
+      if (giveCtrl && coCtl) ctl2 = { pitch: coCtl[0], roll: coCtl[1], yaw: coCtl[2], thr: coCtl[3], brake: 0, fire: 0 };
+      if (p.justSpawned) {
+        p.justSpawned = 0;
+        if (p.ground) p.thr = 0;
+        else p.thr = 0.75;
+      }
+      const ev = stepPlane(p, ctl2, dt);
+      if (CFG.emergencies && !p.ground) {
+        emergT += dt;
+        if (emergT > 6) {
+          emergT = 0;
+          const chance = CFG.emergencyRate * 6 / 600;
+          if (CFG.engineFail && p.eng && Math.random() < chance) {
+            p.eng = 0;
+            say("⚠️ NOODGEVAL: MOTORSTORING! Druk I om te herstarten of maak een noodlanding.", 6);
+            beep(120, 0.6, "square", 0.05);
+          }
+        }
+      }
+      if (ev) {
+        if (ev === "crash") {
+          if (CFG.damage) {
+            p.alive = 0;
+            p.respawnT = 5;
+            addBoom(p.pos, 2);
+            say("💥 Neergestort! Terug in 5 s…", 5);
+            if (HOST) hostDamage(ME, 1e6, null, "crash");
+            else net.send({ k: "crash" });
+          } else {
+            p.ground = true;
+          }
+        } else if (ev.startsWith("land")) {
+          const surf = ev.split(":")[1];
+          say(surf === "carrier" ? "🚢 Geland op het vliegdekschip! Knap!" : "🛬 Mooie landing!", 3);
+          beep(520, 0.15, "triangle", 0.04);
+          if (landRewardT <= 0 && (surf === "runway" || surf === "carrier")) {
+            reward(surf === "carrier" ? 60 : 20, surf === "carrier" ? "Landing op het vliegdekschip" : "Landing op de startbaan");
+            landRewardT = 60;
+          }
+        } else if (ev === "belly") say("😬 Buiklanding! Je vliegtuig is beschadigd.", 4);
+        else if (ev === "takeoff") say("🛫 Opgestegen! Druk G om het landingsgestel in te klappen.", 3);
+      }
+      landRewardT -= dt;
+      if (CFG.repairs && p.ground && p.v < 3 && (p.onSurf === "runway" || p.onSurf === "carrier")) {
+        p.repairT += dt;
+        if (p.repairT > 4) {
+          p.repairT = 0;
+          const need = p.hp < maxHp(p) || !p.eng || p.gearStuck || p.missiles < PLANES[p.type].missiles;
+          p.hp = maxHp(p);
+          p.eng = 1;
+          p.gearStuck = 0;
+          p.gear = 1;
+          p.missiles = PLANES[p.type].missiles;
+          p.flares = Math.round(PLANES[p.type].flares * (hasUp("flare") ? 1.5 : 1));
+          if (need) {
+            say("🔧 Gerepareerd en bijgetankt", 2.5);
+            if (HOST) {
+              const hp = planes.get(ME);
+              if (hp) hp.hp = maxHp(p);
+            } else net.send({ k: "repair" });
+          }
+        }
+      } else p.repairT = 0;
+      p.cool -= dt;
+      p.mcool -= dt;
+      p.flareT = Math.max(0, p.flareT - dt);
+      if (ctl2.fire && weaponsOn() && PLANES[p.type].guns && p.cool <= 0 && myRole === "pilot") {
+        p.cool = 0.075;
+        p.fireFx = 0.12;
+        const sh = gunShot(p, ME);
+        beep(180 + Math.random() * 40, 0.03, "square", 0.02);
+        if (sh.hit) {
+          if (HOST) hostDamage(sh.hit, 6 * CFG.dmgMul, ME, "gun");
+          else net.send({ k: "hit", t: sh.hit, d: 6 * CFG.dmgMul });
+        }
+      }
+      updateLock(p, dt);
+      if (CFG.mode === "race") {
+        const n = RINGS.length * CFG.raceLaps, tgt = RINGS[p.ring % RINGS.length];
+        if (p.pos.distanceTo(tgt) < 48) {
+          p.ring++;
+          beep(760 + p.ring * 12, 0.08, "triangle", 0.04);
+          if (p.ring === 1) {
+            p.raceT0 = worldT;
+            say("🏁 Race gestart! Vlieg door de groene ring.", 2);
+          }
+          if (p.ring > n) {
+            const t = worldT - p.raceT0;
+            p.bestT = p.bestT ? Math.min(p.bestT, t) : t;
+            say("🏁 Finish! Tijd " + fmtT(t), 5);
+            if (HOST) hostFinish(ME, t);
+            else net.send({ k: "fin", t });
+            p.ring = 0;
+          }
+        }
+      }
+      if (CFG.damage) for (const [id, q] of planes) {
+        if (id === ME || !q.alive) continue;
+        if (q.pos.distanceTo(p.pos) < (PLANES[q.type].r + PLANES[p.type].r) * 0.4) {
+          p.alive = 0;
+          p.respawnT = 5;
+          addBoom(p.pos, 2);
+          say("💥 Botsing in de lucht!", 4);
+          if (HOST) hostDamage(ME, 1e6, null, "crash");
+          else net.send({ k: "crash" });
+          break;
+        }
+      }
+    }
+    let last = performance.now(), loopT = 0;
+    const stopLoop = loop((dt) => {
+      worldT += dt;
+      applySky(dt);
+      if (myRole === "co" && coOf) {
+        const pl = planes.get(coOf);
+        if (!pl) stopCo();
+        else if (coHasCtl) {
+          sendT += dt;
+          if (sendT > 0.08) {
+            sendT = 0;
+            const ct = readControls(dt);
+            sendCo(coOf, { a: "in", i: [ct.pitch, ct.roll, ct.yaw, ct.thr] });
+          }
+        }
+      }
+      localStep(dt);
+      if (HOST) {
+        for (const [id, p] of planes) {
+          if (!p.bot) continue;
+          if (!p.alive) {
+            p.respawnT -= dt;
+            if (p.respawnT <= 0) {
+              const np = newPlane(id, p.type, p.skin, p.team, "air");
+              np.bot = 1;
+              np.bBeh = p.bBeh;
+              np.kills = p.kills;
+              np.deaths = p.deaths;
+              planes.set(id, np);
+              const b = brain.get(id);
+              if (b) {
+                b.phase = "fly";
+                b.wp = null;
+              }
+            }
+            continue;
+          }
+          const ctl2 = botThink(id, p, dt);
+          p.flareT = Math.max(0, p.flareT - dt);
+          p.fireFx = Math.max(0, (p.fireFx || 0) - dt);
+          const ev = stepPlane(p, ctl2, dt);
+          if (ev === "crash") {
+            hostDamage(id, 1e6, null, "crash");
+          } else if (ev && ev.startsWith("land")) {
+            const b = brain.get(id);
+            if (b && b.beh === "circuit") b.phase = "landed";
+          }
+        }
+        hostStepMissiles(dt);
+        if (myPlane) {
+          const hp = planes.get(ME);
+          if (hp && hp !== myPlane) planes.set(ME, myPlane);
+        }
+        snapT += dt;
+        if (snapT >= 0.08) {
+          snapT = 0;
+          const s = hostSnapshot();
+          net.send(s);
+          (s.E || []).forEach(handleEvent);
+          missVis = s.M;
+          raceBoard = s.R;
+          if (myPlane) {
+            const me_ = planes.get(ME);
+            if (me_ && !me_.alive && myPlane.alive) {
+            }
+          }
+        }
+        cfgT += dt;
+        if (cfgT > 3) {
+          cfgT = 0;
+          net.send({ k: "cfg", c: CFG });
+        }
+      } else {
+        sendT += dt;
+        if (sendT >= 0.08 && myPlane) {
+          sendT = 0;
+          net.send({ k: "p", s: packMe(myPlane) });
+        }
+      }
+      for (const [id, p] of planes) syncVis(id, p, dt);
+      for (const [id, v] of vis) if (!planes.has(id)) {
+        S.remove(v.g);
+        if (v.tag) S.remove(v.tag);
+        vis.delete(id);
+      }
+      drawMissiles();
+      stepFx(dt);
+      const view = myRole === "co" && coOf ? planes.get(coOf) : myPlane;
+      ringMeshes.forEach((m, i) => {
+        m.visible = CFG.mode === "race";
+        if (m.visible) m.material.color.setHex(view && i === (view.ring || 0) % RINGS.length ? 5635959 : 16765503);
+      });
+      if (view) {
+        updateCamera(view, dt);
+        updateHud(view, dt);
+        if (myPlane) drawLock(myPlane);
+      }
+      r.render(S, cam);
+    });
+    window.__fl = { stepPlane, newPlane, groundAt, PLANES, AIRPORTS, get my() {
+      return myPlane;
+    }, planes, steer, fwdOf, upOf, CFG, brain, botThink, get wt() {
+      return worldT;
+    } };
+    if (HOST) {
+      setBots();
+      ensureBotPlanes();
+      net.send({ k: "cfg", c: CFG });
+    }
+    openMenu("start");
+    return () => {
+      stopLoop();
+      inp.stop();
+      off();
+      offP();
+      removeEventListener("keydown", onKey);
+      document.removeEventListener("mousemove", onMouse);
+      document.removeEventListener("mouseup", onUp);
+      document.removeEventListener("pointerlockchange", onLock);
+      if (myRole === "co") stopCo();
+      if (document.pointerLockElement === c) try {
+        document.exitPointerLock();
+      } catch (e) {
+      }
+      style.remove();
+      T3.dispose();
+    };
+  } },
   { id: "race", n: "Racebaan", e: "🏎️", c: "Samen", g: "#134e5e,#71b280", min: 1, max: 8, bots: true, run(st, net) {
     const HOST = net.isHost, LAPS = window.SPZ_RACE_LAPS || 3, RW = 62, WALL = RW + 40, CW = 420, CH = 480;
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v)), wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -40929,7 +43422,7 @@ draw();
 })();
 ;
 (function() {
-  const HOWTO = { "dday": ["🎯 Aanvallers veroveren de vier controlepunten in volgorde; verdedigers houden de posities tot de timer afloopt.", "🟦 De landingsboten brengen aanvallers vanaf het transportschip naar het strand. Betwist een zone door erin te staan.", "📱 Gebruik de pijltjesknoppen om te lopen, sleep op het beeld om te richten en houd 🔥 vast om te schieten.", "⌨️ WASD / pijltjes lopen, muis richten en F schieten, R herladen, 1–5 wisselen, G granaat, spatie sprint.", "🤖 Ontbrekende plaatsen in de 4-tegen-4-match worden automatisch met bots gevuld; ze zoeken dekking en verdedigen of bestormen het actieve doel."], "solo": { "2048": ["🎯 Schuif de tegels zodat gelijke getallen samensmelten en haal de tegel 2048.", "📱 Veeg in een richting om alle tegels te schuiven.", "⌨️ Pijltjes of WASD.", "💡 Houd je grootste tegel in een hoek en vul de rij ernaast."], "wordle": ["🎯 Raad het geheime woord van 5 letters in 6 pogingen.", "📱 Tik de letters op het toetsenbord onder het rooster en daarna op Enter.", "⌨️ Typ het woord en druk op Enter; Backspace wist een letter.", "🟩 Groen = juiste letter op de juiste plek, 🟨 geel = letter zit erin maar op een andere plek, grijs = zit er niet in.", "💡 Begin met een woord met veel verschillende klinkers."], "snake": ["🎯 Eet zoveel mogelijk appels zonder tegen jezelf of de muur te botsen.", "📱 Veeg over het speelveld om van richting te veranderen.", "⌨️ Pijltjes of WASD om te sturen.", "⭐ Een ster is 5 punten waard; elke appel maakt je sneller.", "💡 Blijf langs de randen draaien als je slang lang wordt."], "memory": ["🎯 Vind alle paren zo snel en met zo weinig beurten mogelijk.", "📱 Tik op twee kaarten om ze om te draaien.", "⌨️ Klik met de muis op de kaarten.", "💡 Onthoud waar je elke kaart al gezien hebt, ook als ze niet passen."], "ttt": ["🎯 Zet drie ❌ op een rij — horizontaal, verticaal of schuin — voor de computer ⭕ dat doet.", "📱 Tik op een leeg vak.", "⌨️ Pijltjes + spatie of de toetsen 1–9.", "💡 Neem het midden of een hoek en blokkeer twee-op-een-rij van de tegenstander."], "mines": ["🎯 Open alle vakjes zonder op een mijn te stappen.", "📱 Tik = graven, lang drukken of de 🚩-knop = vlag zetten.", "⌨️ Klik = graven, rechtsklik = vlag; of pijltjes + spatie en F.", "🔢 Een cijfer zegt hoeveel mijnen er rond dat vakje liggen.", "💡 Tik op een cijfer met genoeg vlaggen eromheen om alle buren in één keer te openen."], "flappy": ["🎯 Vlieg zo ver mogelijk tussen de buizen door.", "📱 Tik op het scherm om te fladderen.", "⌨️ Spatie of ▲.", "🏅 Medailles bij 10, 20, 30 en 50 punten.", "💡 Korte, rustige tikjes werken beter dan veel tegelijk."], "simon": ["🎯 Herhaal de kleurenreeks die steeds een stapje langer wordt.", "📱 Tik op de kleuren in dezelfde volgorde.", "⌨️ Toetsen 1–4 of Q W A S.", "💡 Zeg de kleuren zachtjes mee; het tempo gaat omhoog."], "mole": ["🎯 Mep zoveel mogelijk mollen voor de tijd op is.", "📱 Tik op een mol zodra hij opduikt.", "⌨️ Toetsen 1–9 (numpad) of Q W E / A S D / Z X C.", "🌟 Een gouden mol is +5; mis je, dan gaat er 1 punt af."], "tetris": ["🎯 Maak volle rijen met de vallende blokken; elke volle rij verdwijnt.", "📱 Tik = draaien, sleep = schuiven, veeg omlaag = laten vallen.", "⌨️ ← → schuiven, ↑/X draaien, Z terugdraaien, ↓ zacht, spatie = vallen, C = vasthouden, P = pauze.", "💡 Laat één kolom open voor een lang blok en ruim 4 rijen tegelijk op."], "breakout": ["🎯 Breek alle blokken met de bal zonder hem te laten vallen.", "📱 Sleep om de peddel te bewegen, tik om de bal te lanceren.", "⌨️ ◀ ▶ = peddel, spatie = lanceren.", "🎁 Vang power-ups: ↔ breed, ●● multibal, 🐢 traag, ❤ extra leven.", "💡 Raak de bal met de rand van de peddel voor een scherpere hoek."], "pong": ["🎯 Speel de bal langs de computer; wie eerst 7 punten heeft, wint.", "📱 Sleep op het speelveld om je peddel te bewegen.", "⌨️ ▲ ▼ of W S.", "💡 Raak de bal met de rand van je peddel voor een scherpe hoek."], "galgje": ["🎯 Raad het woord letter voor letter voor het galgje af is.", "📱 Tik op de letters op het scherm.", "⌨️ Typ letters op je toetsenbord.", "💡 Na 8 fouten hang je; begin met veelvoorkomende letters zoals E, N en A."], "slide": ["🎯 Zet alle tegels op volgorde met het lege vak rechtsonder.", "📱 Tik op een tegel naast (of in lijn met) het gat, of veeg.", "⌨️ Pijltjes.", "💡 Los eerst de bovenste rij op, dan de linker kolom, en zo verder."], "lights": ["🎯 Doe alle lampen uit.", "📱 Tik op een lamp: die en zijn buren schakelen om.", "⌨️ Pijltjes + spatie.", "💡 Werk rij per rij: tik onder elke brandende lamp in de rij erboven."], "react": ["🎯 Meet je reactiesnelheid: hoe sneller, hoe beter.", "📱 Tik zodra het vlak groen wordt — niet eerder!", "⌨️ Spatie of klikken.", "📊 Je doet 5 pogingen; je gemiddelde telt."], "blokkenland": ["🎯 Bouw, ontdek en overleef in een blokkenwereld (Creatief of Overleven).", "📱 Links slepen = lopen, rechts slepen = kijken, ⛏️ ingedrukt = breken, 🧱 = plaatsen, ⤒ = springen.", "⌨️ WASD lopen, muis/slepen kijken, klik/X breken, rechtsklik/C plaatsen, 1–9 of wiel = blok kiezen, spatie springen, E = blokken.", "✈️ In Creatief: 2× springen of F = vliegen.", "💡 Je wereld wordt bewaard op dit toestel."], "runner3d": ["🎯 Ren zo ver mogelijk en ontwijk de obstakels.", "📱 Veeg links/rechts = baan wisselen, omhoog vegen = springen.", "⌨️ ◀ ▶ baan wisselen, ▲ of spatie springen.", "💡 Kijk vooruit en wissel op tijd van baan; het gaat steeds sneller."], "helix": ["🎯 Laat de bal door de gaten van de toren naar beneden vallen.", "📱 Sleep links/rechts om de toren te draaien.", "⌨️ ◀ ▶.", "🟥 Raak je een rood stuk, dan ben je af.", "💡 Val door 3 ringen in één keer voor een 🔥 smash die zelfs rood breekt."], "stack3d": ["🎯 Stapel de blokken zo hoog mogelijk.", "📱 Tik om het bewegende blok neer te zetten.", "⌨️ Spatie.", "💡 Wat uitsteekt, valt eraf. 3× perfect op elkaar laat het blok weer groeien."], "ball3d": ["🎯 Rol de bal over het veld en pak alle 8 💎.", "📱 Sleep over het veld om de bal te duwen.", "⌨️ Pijltjes ◀ ▲ ▼ ▶.", "💡 Rem op tijd af: val niet in de gaten."], "race3d": ["🎯 Rij zo ver mogelijk en haal auto’s in zonder te botsen.", "📱 Houd links of rechts op het scherm ingedrukt om te sturen.", "⌨️ ◀ ▶.", "💡 Rakelings passeren levert bonuspunten op."], "space3d": ["🎯 Vlieg door de ruimte, schiet en ontwijk de asteroïden.", "📱 Sleep om te sturen; vasthouden of 🔥 = schieten.", "⌨️ Pijltjes sturen, spatie schieten.", "💡 Blijf in beweging; stilstaan is gevaarlijk."], "maze3d": ["🎯 Vind de groene uitgang van het doolhof.", "📱 ▲ ▼ = lopen, ◀ ▶ of slepen = draaien.", "⌨️ Pijltjes: ▲ ▼ lopen, ◀ ▶ draaien.", "💡 Houd steeds één hand aan dezelfde muur: zo kom je altijd buiten."], "tunnel3d": ["🎯 Vlieg zo ver mogelijk door de tunnel.", "📱 Sleep of gebruik ◀ ▶ om rond te draaien in de tunnel.", "⌨️ ◀ ▶.", "💡 Vlieg door de opening, ontwijk de balken en pak 💎 voor extra punten."], "platform3d": ["🎯 Pak 10 ⭐ en haal de vlag.", "📱 Gebruik de knoppen om te lopen en ⤒ om te springen.", "⌨️ Pijltjes of WASD lopen, spatie springen.", "💡 Spring bovenop vijanden om ze te verslaan."], "surprise3d": ["🎯 Speel minigolf: krijg de bal in zo weinig slagen mogelijk in de put.", "📱 Sleep vanaf de bal naar achteren en laat los, als een katapult.", "⌨️ ◀ ▶ richten, − + kracht, spatie = slaan.", "💡 Hoe verder je trekt, hoe harder de slag; gebruik de randen om te stuiteren."], "invaders": ["🎯 Schiet alle invasieschepen neer voor ze beneden zijn.", "📱 Sleep of ◀ ▶ = bewegen, tik of 🔥 = schieten.", "⌨️ ◀ ▶ bewegen, spatie schieten.", "💡 Verschuil je achter de schilden en ruim eerst de buitenste rijen op."], "asteroids": ["🎯 Schiet de asteroïden kapot zonder geraakt te worden.", "📱 Slepen = draaien, tik = schieten; of de knoppen ◀ ▲ ▶ 🔥.", "⌨️ ◀ ▶ draaien, ▲ gas, spatie schieten.", "💡 Grote stenen breken in kleinere; geef kort gas en laat je drijven."], "pacman": ["🎯 Eet alle stipjes in het doolhof en ontwijk de spoken.", "📱 Veeg of gebruik de knoppen om te sturen.", "⌨️ Pijltjes.", "💡 Na een grote stip kun je even de spoken opeten."], "frogger": ["🎯 Breng 5 kikkers veilig over de weg en de rivier naar huis.", "📱 Veeg of gebruik de knoppen; tik = één sprong vooruit.", "⌨️ Pijltjes.", "💡 Op de rivier spring je op boomstammen; in het water val je."], "dino": ["🎯 Ren zo ver mogelijk en spring over de cactussen.", "📱 Tik om te springen.", "⌨️ Spatie of ⬆ springen, ⬇ bukken.", "💡 Bukken helpt tegen vogels; het tempo gaat langzaam omhoog."], "doodle": ["🎯 Spring zo hoog mogelijk van platform naar platform.", "📱 Houd je vinger links of rechts van het midden, of gebruik de knoppen.", "⌨️ ◀ ▶ sturen.", "💡 Je springt vanzelf; ga je aan één kant uit beeld, dan kom je aan de andere kant terug."], "lander": ["🎯 Land de maanlander zacht op een groen platform.", "📱 Houd het scherm of 🔥 vast voor stuwkracht, ◀ ▶ = draaien.", "⌨️ ▲ of spatie = stuwkracht, ◀ ▶ = draaien.", "💡 Kom recht en langzaam naar beneden en let op je brandstof."], "platformer": ["🎯 Loop en spring naar de vlag aan het einde van het level.", "📱 Knoppen ◀ ▶ lopen, tik om te springen.", "⌨️ ◀ ▶ lopen, ⬆ of spatie springen.", "💡 Kort tikken = lage sprong. Spring op vijanden om ze te verslaan."], "bubble": ["🎯 Schiet bellen en maak groepjes van 3 of meer van dezelfde kleur om ze te laten knallen.", "📱 Sleep om te mikken, loslaten = schieten; tik op de volgende bel om te wisselen.", "⌨️ ◀ ▶ mikken, spatie schieten, ↓ wisselen.", "💡 Kaats tegen de muur om moeilijke plekjes te bereiken."], "towerdef": ["🎯 Houd de vijanden tegen voor ze het einde van het pad halen.", "📱 Kies onderaan een toren en tik op het gras; tik op een toren om te verbeteren of te verkopen.", "⌨️ 1–4 kies toren, pijltjes + spatie plaatsen, u/v verbeteren/verkopen, n = volgende golf, f = sneller.", "💡 Zet torens in de bochten; daar schieten ze het langst."], "fruit": ["🎯 Snijd zoveel mogelijk fruit door.", "📱 Veeg snel over het fruit.", "⌨️ Sleep met de muis over het fruit.", "💣 Raak geen bommen; 3 fruit gemist = game over."], "piano": ["🎯 Tik alleen op de zwarte tegels en mis er geen.", "📱 Tik op de onderste zwarte tegel.", "⌨️ Toetsen D F J K of 1–4.", "💡 Het tempo gaat omhoog; een witte tegel raken = einde."], "cookie": ["🎯 Bak zoveel mogelijk koekjes.", "📱 Tik op het grote koekje.", "⌨️ Klik op het koekje.", "🏭 Koop oma’s en fabrieken: die bakken koekjes per seconde.", "💡 Je voortgang wordt bewaard, ook als je weggaat."], "flood": ["🎯 Maak het hele bord één kleur in zo weinig zetten mogelijk.", "📱 Tik op een kleur: het vlak linksboven neemt die kleur aan.", "⌨️ Toetsen 1–6.", "💡 Kies de kleur die het grootste stuk aan je vlak vastmaakt."], "mahjong": ["🎯 Haal alle stenen weg door gelijke paren te maken.", "📱 Tik op twee gelijke vrije stenen (niets erop, links óf rechts vrij).", "⌨️ ←→ + spatie kiezen, h = hint, s = schudden, u = terug.", "💡 Haal eerst stenen weg die andere stenen blokkeren."], "kleurbal": ["🎯 Sorteer de ballen zodat elke buis maar één kleur heeft.", "📱 Tik op een buis en dan op een andere.", "⌨️ ←→ + spatie, u = terug, h = hint.", "💡 Een bal mag alleen op dezelfde kleur of in een lege buis."], "sudoku": ["🎯 Vul het rooster zodat elk cijfer 1–9 één keer voorkomt in elke rij, kolom en 3×3-blok.", "📱 Tik op een vakje en daarna op een cijfer.", "⌨️ Pijltjes + cijfers 1–9, Backspace wist, N = notities, H = hint.", "💡 Zoek eerst rijen of blokken waar nog maar één cijfer ontbreekt."], "match3": ["🎯 Wissel juwelen om 3 of meer op een rij te maken.", "📱 Tik op twee buursteentjes of veeg om te wisselen.", "⌨️ Pijltjes + spatie.", "💡 Combinaties van 4 of 5 leveren extra punten op."], "sokoban": ["🎯 Duw alle kisten 📦 op de doelen.", "📱 Veeg of tik in de richting waarin je wilt lopen.", "⌨️ Pijltjes of WASD, Z = ongedaan maken, R = opnieuw.", "💡 Je kunt alleen duwen, niet trekken: duw geen kist in een hoek."], "mastermind": ["🎯 Kraak de geheime kleurcode.", "📱 Tik op kleuren om de rij te vullen en dan op ✔.", "⌨️ Toetsen 1–6, Backspace, Enter.", "⚫ = goede kleur op de juiste plek, ⚪ = goede kleur op een verkeerde plek.", "💡 Gebruik je eerste pogingen om uit te zoeken welke kleuren erin zitten."], "nonogram": ["🎯 Kleur de juiste vakjes in zodat er een tekening verschijnt.", "📱 Tik of sleep om vakjes te vullen; ⬛/✖ wisselt de modus.", "⌨️ Pijltjes + spatie vullen, X = zeker leeg, rechtermuisknop = ✖.", "💡 De getallen tonen hoeveel gevulde vakjes er na elkaar in die rij of kolom staan."], "woordzoeker": ["🎯 Vind alle woorden in het letterrooster.", "📱 Sleep over een woord, of tik op de eerste en de laatste letter.", "⌨️ Sleep met de muis over het woord.", "💡 Woorden staan horizontaal, verticaal of schuin."], "quiz": ["🎯 Beantwoord zoveel mogelijk vragen juist.", "📱 Tik op een antwoord.", "⌨️ Toetsen 1–4 kiezen, Enter = volgende vraag.", "💡 Twijfel je? Streep eerst de antwoorden weg die zeker fout zijn."], "chess": ["🎯 Zet de koning van de computer schaakmat.", "📱 Tik op een stuk en daarna op het doelvak.", "⌨️ Klik op een stuk en daarna op het doelvak.", "♙ Jij speelt wit en begint.", "💡 Breng eerst je paarden en lopers naar het midden en rokeer vroeg."], "connect4": ["🎯 Leg als eerste vier schijven op een rij (ook schuin).", "📱 Tik op een kolom om een schijf te laten vallen.", "⌨️ Toetsen 1–7, of ◀ ▶ en spatie.", "💡 Het midden is de sterkste kolom."], "checkers": ["🎯 Sla alle stukken van de tegenstander of zet hem vast.", "📱 Tik op een schijf en dan op een vakje.", "⌨️ Klik op een schijf en dan op een vakje.", "⚠️ Slaan is verplicht (met de meeste stukken). Een dam mag over meerdere vakjes vliegen."], "othello": ["🎯 Heb op het einde de meeste schijven van jouw kleur.", "📱 Tik op een stip om een schijf te leggen.", "⌨️ Klik op een stip.", "🔄 Schijven die je insluit, draaien om naar jouw kleur.", "💡 Hoeken kunnen nooit meer omgedraaid worden: probeer ze te pakken."], "battleship": ["🎯 Laat alle schepen van de computer zinken voor hij de jouwe vindt.", "📱 Schud je vloot tot je tevreden bent en tik op ⚓ Start; tik daarna in de vijandelijke wateren om te vuren.", "⌨️ Klik op een vak om te vuren.", "💡 Na een treffer: schiet ernaast om de richting van het schip te vinden."], "blackjack": ["🎯 Kom dichter bij 21 dan de dealer zonder erover te gaan.", "📱 Gebruik de knoppen: kaart, passen, verdubbelen, delen.", "⌨️ h = kaart, s = passen, d = verdubbelen, spatie = delen.", "💡 Blackjack betaalt 3:2; de dealer past vanaf 17."], "solitaire": ["🎯 Leg alle kaarten per kleur op volgorde (aas tot heer) op de fundamenten.", "📱 Tik op een kaart (of reeks) en dan op het doel; tik op de voorraad om te trekken.", "⌨️ Klik op kaarten, spatie = trekken, u = ongedaan maken.", "💡 Tik nog eens op een gekozen kaart om ze naar een fundament te sturen."], "dots": ["🎯 Sluit de meeste hokjes.", "📱 Tik tussen twee stippen om een lijn te trekken.", "⌨️ Klik tussen twee stippen.", "💡 Wie een hokje sluit, mag nog eens. Geef je tegenstander geen derde zijde cadeau."], "yahtzee": ["🎯 Haal de hoogste score in 13 beurten.", "📱 Gooi, tik op dobbelstenen om ze vast te houden en tik op een rij om te scoren.", "⌨️ Spatie = gooien, 1–5 = vasthouden.", "💡 Je mag 3× gooien per beurt. Haal 63 in het bovenste deel voor 35 bonuspunten."] }, "mp": { "blokkenland": ["🎯 Bouw samen in dezelfde blokkenwereld.", "📱 Links slepen = lopen, rechts slepen = kijken, ⛏️ breken, 🧱 plaatsen, ⤒ springen (2× = vliegen).", "⌨️ WASD lopen, muis kijken, klik/X breken, rechtsklik/C plaatsen, 1–9 kiezen, spatie springen, F vliegen.", "💡 De wereld leeft bij de host: wie later meedoet, ziet alles wat al gebouwd is."], "ttt": ["🎯 Zet als eerste drie op een rij.", "📱 Tik op een leeg vakje als je aan de beurt bent.", "⌨️ Klik op een vakje.", "💡 De verliezer begint de volgende ronde."], "connect4": ["🎯 Leg als eerste vier schijven op een rij (ook schuin).", "📱 Tik op een kolom als je aan de beurt bent.", "⌨️ Toetsen 1–7, of ◀ ▶ en spatie.", "💡 Bouw dreigingen op twee plaatsen tegelijk."], "checkers": ["🎯 Sla alle stukken van je tegenstander of zet hem vast.", "📱 Tik op een schijf en dan op een vakje.", "⌨️ Klik op een schijf en dan op een vakje.", "⚠️ Slaan is verplicht (met de meeste stukken); dammen vliegen."], "othello": ["🎯 Heb op het einde de meeste schijven van jouw kleur.", "📱 Tik op een stip om een schijf te leggen.", "⌨️ Klik op een stip.", "💡 Hoeken zijn goud waard: die kunnen niet meer omgedraaid worden."], "battleship": ["🎯 Laat alle schepen van je tegenstander zinken.", "📱 Zet je vloot neer (🔀 Schud of 🔁 Draaien) en tik op ✅ Klaar; tik daarna op zijn water om te vuren.", "⌨️ Klik om schepen te plaatsen en om te vuren.", "💡 Na een treffer: schiet ernaast om de richting te vinden."], "chess": ["🎯 Zet de koning van je tegenstander schaakmat.", "📱 Tik op een stuk en daarna op het doelvak.", "⌨️ Klik op een stuk en daarna op het doelvak.", "🏳️ Opgeven kan met de knop onder het bord."], "dots": ["🎯 Sluit de meeste hokjes.", "📱 Tik tussen twee stippen om een lijn te trekken.", "⌨️ Klik tussen twee stippen.", "💡 Wie een hokje sluit, mag nog eens."], "pong": ["🎯 Speel de bal langs je tegenstander; eerste tot 7 wint.", "📱 Sleep op het speelveld of gebruik de knoppen ▲ ▼.", "⌨️ ▲ ▼.", "💡 Raak de bal met de rand van je peddel voor een scherpe hoek."], "tanks": ["🎯 Raak de andere tank 5 keer.", "📱 Knoppen ↺ ↻ draaien, ▲ ▼ rijden, 🔥 schieten.", "⌨️ Pijltjes of WASD, spatie = schieten.", "💡 Kogels stuiteren één keer tegen de muur: schiet om de hoek!"], "race": ["🎯 Rij als eerste 3 ronden rond de baan.", "📱 Gebruik ◀ ▶ om te sturen en 🔺 Gas / 🔻 Rem.", "⌨️ Z of ↑ gas · S of ↓ rem · Q/D of ←/→ sturen.", "💡 Gele pijlen geven een boost, gras remt je af en de vangrail kaatst je terug."], "dday": ["🎯 Speel met je team: verover punten, win het teamgevecht, steel de vlag of overleef de zombies.", "📱 Joystick om te lopen, sleep om te kijken, knoppen voor schieten, richten, healen en meer.", "⌨️ Z/Q/S/D lopen · muis kijken · klik schieten · rechtsklik richten · spatie springen · W hurken · T voertuig · Tab scorebord.", "💡 Kies in het menu (Esc) je klasse, de spelmodus, de map en de moeilijkheid van de bots."], "tron": ["🎯 Blijf het langst rijden zonder ergens tegenaan te botsen.", "📱 Veeg op het veld of gebruik de knoppen om af te slaan.", "⌨️ Pijltjes of WASD.", "💡 Laatste die rijdt wint de ronde; 3 rondes winnen = spel gewonnen."], "hockey": ["🎯 Schiet de puck in het doel van je tegenstander; eerste tot 5 wint.", "📱 Sleep je schijf in de onderste helft.", "⌨️ Pijltjes, of sleep met de muis.", "💡 Kaats via de zijkant om langs de verdediging te komen."], "snakeduel": ["🎯 Wees de laatste slang die overleeft.", "📱 Veeg op het bord of gebruik de knoppen.", "⌨️ Pijltjes of WASD.", "🍎 Eet appels om te groeien; bots nergens tegen.", "💡 3 rondes winnen = spel gewonnen."], "quiz": ["🎯 Geef zo snel mogelijk het juiste antwoord.", "📱 Tik op een antwoord.", "⌨️ Toetsen 1–4.", "💡 Het snelste juiste antwoord krijgt 100 punten."], "draw": ["🎯 Teken het woord zodat de anderen het raden, of raad wat de tekenaar maakt.", "📱 Teken met je vinger; raders typen hun gok en tikken op Enter.", "⌨️ Teken met de muis; typ je gok en druk op Enter.", "💡 Sneller raden = meer punten, voor de rader én de tekenaar."], "words": ["🎯 Vorm zoveel mogelijk woorden van minstens 3 letters uit de 9 letters.", "📱 Typ een woord en tik op Enter of toevoegen.", "⌨️ Typ en druk op Enter.", "💡 Elke letter zo vaak als hij voorkomt; langere woorden geven meer punten."], "yahtzee": ["🎯 Haal samen 13 beurten lang de hoogste score.", "📱 Gooi, tik op dobbelstenen om ze vast te houden en tik op een rij in jouw kolom.", "⌨️ Spatie = gooien, 1–5 = vasthouden.", "💡 63 punten in het bovenste deel = 35 bonuspunten."], "weerwolven": ["🎯 Burgers: ontmasker de weerwolven. Weerwolven: blijf onopgemerkt.", "📱 Bekijk je rolkaart (tik om ze te verbergen) en tik op een speler om te kiezen.", "⌨️ Klik op een speler om te kiezen.", "🌙 ’s Nachts kiezen de wolven een slachtoffer, overdag stemt het dorp.", "💡 Praat met elkaar (in het echt of via de chat) voor je stemt."], "spionnen": ["🎯 Vind als team al je geheime woorden voor de andere ploeg.", "📱 Spionmeesters geven een hint: één woord + een aantal.", "⌨️ Teamleden klikken op de woorden die bij de hint passen.", "💀 Tik nooit op de moordenaar — dan verlies je meteen."], "jeopardy": ["🎯 Verdien de meeste punten met juiste antwoorden.", "📱 Wie aan de beurt is, kiest een vakje; iedereen buzzt met de knop.", "⌨️ Spatie = buzzen, 1–4 = antwoord kiezen.", "💡 Fout geantwoord kost punten: buzz alleen als je het (bijna) zeker weet."], "stadland": ["🎯 Vul per categorie een woord in dat met de letter begint.", "📱 Tik in de vakjes en typ; tik op ✋ STOP! als alles ingevuld is.", "⌨️ Typ en spring met Tab naar het volgende vak.", "🗳️ Stem ✗ op foute antwoorden. Uniek = 10 pt, dubbel = 5 pt."], "bluf": ["🎯 Bied hoeveel stenen van een waarde er in totaal liggen, of roep Bluf!", "📱 Kies aantal en waarde en tik op bieden, of op Bluf!", "⌨️ ↑↓ aantal, 1–6 waarde, Enter bieden, B = bluf.", "💡 Enen zijn joker. Wie fout zit, verliest een steen."], "kleurkaart": ["🎯 Raak als eerste al je kaarten kwijt.", "📱 Tik op een kaart met dezelfde kleur, hetzelfde getal of symbool.", "⌨️ ←/→ kiezen, Enter spelen, D pakken/passen, L = laatste kaart.", "💡 Vergeet niet “laatste kaart” te melden!"], "pesten": ["🎯 Raak als eerste al je kaarten kwijt.", "📱 Tik op een kaart van dezelfde kleur of waarde.", "⌨️ ←/→ kiezen, Enter spelen, D pakken, L = laatste kaart.", "🃏 2 = pak 2, joker = pak 5, 7 blijft, 8 slaat over, heer nog eens, aas draait om, boer kiest kleur.", "💡 Je mag niet eindigen op een pestkaart."], "drawteams": ["🎯 Teken voor je team en raad wat je teamgenoot tekent.", "📱 Teken met je vinger; alleen je eigen team raadt (typ + Enter).", "⌨️ Teken met de muis; typ je gok en druk op Enter.", "💡 Binnen 20 seconden geraden = bonuspunt."], "sudoku": ["🎯 Vul samen het sudokurooster in.", "📱 Tik op een vakje en daarna op een cijfer.", "⌨️ Pijltjes + cijfers 1–9, Backspace wist, H = hint.", "💡 Juiste cijfers krijgen de kleur van de speler die ze vond."], "mines": ["🎯 Open samen alle veilige vakjes zonder op een mijn te stappen.", "📱 Tik = graven, lang drukken of vlag-modus = 🚩.", "⌨️ Klik = graven, rechtsklik = vlag, F wisselt modus.", "💡 Tik op een cijfer met genoeg vlaggen om alle buren te openen."], "woordzoeker": ["🎯 Vind de meeste woorden in het gedeelde rooster.", "📱 Sleep over een woord, of tik op de eerste en de laatste letter.", "⌨️ Sleep met de muis over het woord.", "💡 Woorden staan ook schuin; wie het eerst vindt, krijgt het punt."] } };
+  const HOWTO = { "dday": ["🎯 Aanvallers veroveren de vier controlepunten in volgorde; verdedigers houden de posities tot de timer afloopt.", "🟦 De landingsboten brengen aanvallers vanaf het transportschip naar het strand. Betwist een zone door erin te staan.", "📱 Gebruik de pijltjesknoppen om te lopen, sleep op het beeld om te richten en houd 🔥 vast om te schieten.", "⌨️ WASD / pijltjes lopen, muis richten en F schieten, R herladen, 1–5 wisselen, G granaat, spatie sprint.", "🤖 Ontbrekende plaatsen in de 4-tegen-4-match worden automatisch met bots gevuld; ze zoeken dekking en verdedigen of bestormen het actieve doel."], "solo": { "2048": ["🎯 Schuif de tegels zodat gelijke getallen samensmelten en haal de tegel 2048.", "📱 Veeg in een richting om alle tegels te schuiven.", "⌨️ Pijltjes of WASD.", "💡 Houd je grootste tegel in een hoek en vul de rij ernaast."], "wordle": ["🎯 Raad het geheime woord van 5 letters in 6 pogingen.", "📱 Tik de letters op het toetsenbord onder het rooster en daarna op Enter.", "⌨️ Typ het woord en druk op Enter; Backspace wist een letter.", "🟩 Groen = juiste letter op de juiste plek, 🟨 geel = letter zit erin maar op een andere plek, grijs = zit er niet in.", "💡 Begin met een woord met veel verschillende klinkers."], "snake": ["🎯 Eet zoveel mogelijk appels zonder tegen jezelf of de muur te botsen.", "📱 Veeg over het speelveld om van richting te veranderen.", "⌨️ Pijltjes of WASD om te sturen.", "⭐ Een ster is 5 punten waard; elke appel maakt je sneller.", "💡 Blijf langs de randen draaien als je slang lang wordt."], "memory": ["🎯 Vind alle paren zo snel en met zo weinig beurten mogelijk.", "📱 Tik op twee kaarten om ze om te draaien.", "⌨️ Klik met de muis op de kaarten.", "💡 Onthoud waar je elke kaart al gezien hebt, ook als ze niet passen."], "ttt": ["🎯 Zet drie ❌ op een rij — horizontaal, verticaal of schuin — voor de computer ⭕ dat doet.", "📱 Tik op een leeg vak.", "⌨️ Pijltjes + spatie of de toetsen 1–9.", "💡 Neem het midden of een hoek en blokkeer twee-op-een-rij van de tegenstander."], "mines": ["🎯 Open alle vakjes zonder op een mijn te stappen.", "📱 Tik = graven, lang drukken of de 🚩-knop = vlag zetten.", "⌨️ Klik = graven, rechtsklik = vlag; of pijltjes + spatie en F.", "🔢 Een cijfer zegt hoeveel mijnen er rond dat vakje liggen.", "💡 Tik op een cijfer met genoeg vlaggen eromheen om alle buren in één keer te openen."], "flappy": ["🎯 Vlieg zo ver mogelijk tussen de buizen door.", "📱 Tik op het scherm om te fladderen.", "⌨️ Spatie of ▲.", "🏅 Medailles bij 10, 20, 30 en 50 punten.", "💡 Korte, rustige tikjes werken beter dan veel tegelijk."], "simon": ["🎯 Herhaal de kleurenreeks die steeds een stapje langer wordt.", "📱 Tik op de kleuren in dezelfde volgorde.", "⌨️ Toetsen 1–4 of Q W A S.", "💡 Zeg de kleuren zachtjes mee; het tempo gaat omhoog."], "mole": ["🎯 Mep zoveel mogelijk mollen voor de tijd op is.", "📱 Tik op een mol zodra hij opduikt.", "⌨️ Toetsen 1–9 (numpad) of Q W E / A S D / Z X C.", "🌟 Een gouden mol is +5; mis je, dan gaat er 1 punt af."], "tetris": ["🎯 Maak volle rijen met de vallende blokken; elke volle rij verdwijnt.", "📱 Tik = draaien, sleep = schuiven, veeg omlaag = laten vallen.", "⌨️ ← → schuiven, ↑/X draaien, Z terugdraaien, ↓ zacht, spatie = vallen, C = vasthouden, P = pauze.", "💡 Laat één kolom open voor een lang blok en ruim 4 rijen tegelijk op."], "breakout": ["🎯 Breek alle blokken met de bal zonder hem te laten vallen.", "📱 Sleep om de peddel te bewegen, tik om de bal te lanceren.", "⌨️ ◀ ▶ = peddel, spatie = lanceren.", "🎁 Vang power-ups: ↔ breed, ●● multibal, 🐢 traag, ❤ extra leven.", "💡 Raak de bal met de rand van de peddel voor een scherpere hoek."], "pong": ["🎯 Speel de bal langs de computer; wie eerst 7 punten heeft, wint.", "📱 Sleep op het speelveld om je peddel te bewegen.", "⌨️ ▲ ▼ of W S.", "💡 Raak de bal met de rand van je peddel voor een scherpe hoek."], "galgje": ["🎯 Raad het woord letter voor letter voor het galgje af is.", "📱 Tik op de letters op het scherm.", "⌨️ Typ letters op je toetsenbord.", "💡 Na 8 fouten hang je; begin met veelvoorkomende letters zoals E, N en A."], "slide": ["🎯 Zet alle tegels op volgorde met het lege vak rechtsonder.", "📱 Tik op een tegel naast (of in lijn met) het gat, of veeg.", "⌨️ Pijltjes.", "💡 Los eerst de bovenste rij op, dan de linker kolom, en zo verder."], "lights": ["🎯 Doe alle lampen uit.", "📱 Tik op een lamp: die en zijn buren schakelen om.", "⌨️ Pijltjes + spatie.", "💡 Werk rij per rij: tik onder elke brandende lamp in de rij erboven."], "react": ["🎯 Meet je reactiesnelheid: hoe sneller, hoe beter.", "📱 Tik zodra het vlak groen wordt — niet eerder!", "⌨️ Spatie of klikken.", "📊 Je doet 5 pogingen; je gemiddelde telt."], "blokkenland": ["🎯 Bouw, ontdek en overleef in een blokkenwereld (Creatief of Overleven).", "📱 Links slepen = lopen, rechts slepen = kijken, ⛏️ ingedrukt = breken, 🧱 = plaatsen, ⤒ = springen.", "⌨️ WASD lopen, muis/slepen kijken, klik/X breken, rechtsklik/C plaatsen, 1–9 of wiel = blok kiezen, spatie springen, E = blokken.", "✈️ In Creatief: 2× springen of F = vliegen.", "💡 Je wereld wordt bewaard op dit toestel."], "runner3d": ["🎯 Ren zo ver mogelijk en ontwijk de obstakels.", "📱 Veeg links/rechts = baan wisselen, omhoog vegen = springen.", "⌨️ ◀ ▶ baan wisselen, ▲ of spatie springen.", "💡 Kijk vooruit en wissel op tijd van baan; het gaat steeds sneller."], "helix": ["🎯 Laat de bal door de gaten van de toren naar beneden vallen.", "📱 Sleep links/rechts om de toren te draaien.", "⌨️ ◀ ▶.", "🟥 Raak je een rood stuk, dan ben je af.", "💡 Val door 3 ringen in één keer voor een 🔥 smash die zelfs rood breekt."], "stack3d": ["🎯 Stapel de blokken zo hoog mogelijk.", "📱 Tik om het bewegende blok neer te zetten.", "⌨️ Spatie.", "💡 Wat uitsteekt, valt eraf. 3× perfect op elkaar laat het blok weer groeien."], "ball3d": ["🎯 Rol de bal over het veld en pak alle 8 💎.", "📱 Sleep over het veld om de bal te duwen.", "⌨️ Pijltjes ◀ ▲ ▼ ▶.", "💡 Rem op tijd af: val niet in de gaten."], "race3d": ["🎯 Rij zo ver mogelijk en haal auto’s in zonder te botsen.", "📱 Houd links of rechts op het scherm ingedrukt om te sturen.", "⌨️ ◀ ▶.", "💡 Rakelings passeren levert bonuspunten op."], "space3d": ["🎯 Vlieg door de ruimte, schiet en ontwijk de asteroïden.", "📱 Sleep om te sturen; vasthouden of 🔥 = schieten.", "⌨️ Pijltjes sturen, spatie schieten.", "💡 Blijf in beweging; stilstaan is gevaarlijk."], "maze3d": ["🎯 Vind de groene uitgang van het doolhof.", "📱 ▲ ▼ = lopen, ◀ ▶ of slepen = draaien.", "⌨️ Pijltjes: ▲ ▼ lopen, ◀ ▶ draaien.", "💡 Houd steeds één hand aan dezelfde muur: zo kom je altijd buiten."], "tunnel3d": ["🎯 Vlieg zo ver mogelijk door de tunnel.", "📱 Sleep of gebruik ◀ ▶ om rond te draaien in de tunnel.", "⌨️ ◀ ▶.", "💡 Vlieg door de opening, ontwijk de balken en pak 💎 voor extra punten."], "platform3d": ["🎯 Pak 10 ⭐ en haal de vlag.", "📱 Gebruik de knoppen om te lopen en ⤒ om te springen.", "⌨️ Pijltjes of WASD lopen, spatie springen.", "💡 Spring bovenop vijanden om ze te verslaan."], "surprise3d": ["🎯 Speel minigolf: krijg de bal in zo weinig slagen mogelijk in de put.", "📱 Sleep vanaf de bal naar achteren en laat los, als een katapult.", "⌨️ ◀ ▶ richten, − + kracht, spatie = slaan.", "💡 Hoe verder je trekt, hoe harder de slag; gebruik de randen om te stuiteren."], "invaders": ["🎯 Schiet alle invasieschepen neer voor ze beneden zijn.", "📱 Sleep of ◀ ▶ = bewegen, tik of 🔥 = schieten.", "⌨️ ◀ ▶ bewegen, spatie schieten.", "💡 Verschuil je achter de schilden en ruim eerst de buitenste rijen op."], "asteroids": ["🎯 Schiet de asteroïden kapot zonder geraakt te worden.", "📱 Slepen = draaien, tik = schieten; of de knoppen ◀ ▲ ▶ 🔥.", "⌨️ ◀ ▶ draaien, ▲ gas, spatie schieten.", "💡 Grote stenen breken in kleinere; geef kort gas en laat je drijven."], "pacman": ["🎯 Eet alle stipjes in het doolhof en ontwijk de spoken.", "📱 Veeg of gebruik de knoppen om te sturen.", "⌨️ Pijltjes.", "💡 Na een grote stip kun je even de spoken opeten."], "frogger": ["🎯 Breng 5 kikkers veilig over de weg en de rivier naar huis.", "📱 Veeg of gebruik de knoppen; tik = één sprong vooruit.", "⌨️ Pijltjes.", "💡 Op de rivier spring je op boomstammen; in het water val je."], "dino": ["🎯 Ren zo ver mogelijk en spring over de cactussen.", "📱 Tik om te springen.", "⌨️ Spatie of ⬆ springen, ⬇ bukken.", "💡 Bukken helpt tegen vogels; het tempo gaat langzaam omhoog."], "doodle": ["🎯 Spring zo hoog mogelijk van platform naar platform.", "📱 Houd je vinger links of rechts van het midden, of gebruik de knoppen.", "⌨️ ◀ ▶ sturen.", "💡 Je springt vanzelf; ga je aan één kant uit beeld, dan kom je aan de andere kant terug."], "lander": ["🎯 Land de maanlander zacht op een groen platform.", "📱 Houd het scherm of 🔥 vast voor stuwkracht, ◀ ▶ = draaien.", "⌨️ ▲ of spatie = stuwkracht, ◀ ▶ = draaien.", "💡 Kom recht en langzaam naar beneden en let op je brandstof."], "platformer": ["🎯 Loop en spring naar de vlag aan het einde van het level.", "📱 Knoppen ◀ ▶ lopen, tik om te springen.", "⌨️ ◀ ▶ lopen, ⬆ of spatie springen.", "💡 Kort tikken = lage sprong. Spring op vijanden om ze te verslaan."], "bubble": ["🎯 Schiet bellen en maak groepjes van 3 of meer van dezelfde kleur om ze te laten knallen.", "📱 Sleep om te mikken, loslaten = schieten; tik op de volgende bel om te wisselen.", "⌨️ ◀ ▶ mikken, spatie schieten, ↓ wisselen.", "💡 Kaats tegen de muur om moeilijke plekjes te bereiken."], "towerdef": ["🎯 Houd de vijanden tegen voor ze het einde van het pad halen.", "📱 Kies onderaan een toren en tik op het gras; tik op een toren om te verbeteren of te verkopen.", "⌨️ 1–4 kies toren, pijltjes + spatie plaatsen, u/v verbeteren/verkopen, n = volgende golf, f = sneller.", "💡 Zet torens in de bochten; daar schieten ze het langst."], "fruit": ["🎯 Snijd zoveel mogelijk fruit door.", "📱 Veeg snel over het fruit.", "⌨️ Sleep met de muis over het fruit.", "💣 Raak geen bommen; 3 fruit gemist = game over."], "piano": ["🎯 Tik alleen op de zwarte tegels en mis er geen.", "📱 Tik op de onderste zwarte tegel.", "⌨️ Toetsen D F J K of 1–4.", "💡 Het tempo gaat omhoog; een witte tegel raken = einde."], "cookie": ["🎯 Bak zoveel mogelijk koekjes.", "📱 Tik op het grote koekje.", "⌨️ Klik op het koekje.", "🏭 Koop oma’s en fabrieken: die bakken koekjes per seconde.", "💡 Je voortgang wordt bewaard, ook als je weggaat."], "flood": ["🎯 Maak het hele bord één kleur in zo weinig zetten mogelijk.", "📱 Tik op een kleur: het vlak linksboven neemt die kleur aan.", "⌨️ Toetsen 1–6.", "💡 Kies de kleur die het grootste stuk aan je vlak vastmaakt."], "mahjong": ["🎯 Haal alle stenen weg door gelijke paren te maken.", "📱 Tik op twee gelijke vrije stenen (niets erop, links óf rechts vrij).", "⌨️ ←→ + spatie kiezen, h = hint, s = schudden, u = terug.", "💡 Haal eerst stenen weg die andere stenen blokkeren."], "kleurbal": ["🎯 Sorteer de ballen zodat elke buis maar één kleur heeft.", "📱 Tik op een buis en dan op een andere.", "⌨️ ←→ + spatie, u = terug, h = hint.", "💡 Een bal mag alleen op dezelfde kleur of in een lege buis."], "sudoku": ["🎯 Vul het rooster zodat elk cijfer 1–9 één keer voorkomt in elke rij, kolom en 3×3-blok.", "📱 Tik op een vakje en daarna op een cijfer.", "⌨️ Pijltjes + cijfers 1–9, Backspace wist, N = notities, H = hint.", "💡 Zoek eerst rijen of blokken waar nog maar één cijfer ontbreekt."], "match3": ["🎯 Wissel juwelen om 3 of meer op een rij te maken.", "📱 Tik op twee buursteentjes of veeg om te wisselen.", "⌨️ Pijltjes + spatie.", "💡 Combinaties van 4 of 5 leveren extra punten op."], "sokoban": ["🎯 Duw alle kisten 📦 op de doelen.", "📱 Veeg of tik in de richting waarin je wilt lopen.", "⌨️ Pijltjes of WASD, Z = ongedaan maken, R = opnieuw.", "💡 Je kunt alleen duwen, niet trekken: duw geen kist in een hoek."], "mastermind": ["🎯 Kraak de geheime kleurcode.", "📱 Tik op kleuren om de rij te vullen en dan op ✔.", "⌨️ Toetsen 1–6, Backspace, Enter.", "⚫ = goede kleur op de juiste plek, ⚪ = goede kleur op een verkeerde plek.", "💡 Gebruik je eerste pogingen om uit te zoeken welke kleuren erin zitten."], "nonogram": ["🎯 Kleur de juiste vakjes in zodat er een tekening verschijnt.", "📱 Tik of sleep om vakjes te vullen; ⬛/✖ wisselt de modus.", "⌨️ Pijltjes + spatie vullen, X = zeker leeg, rechtermuisknop = ✖.", "💡 De getallen tonen hoeveel gevulde vakjes er na elkaar in die rij of kolom staan."], "woordzoeker": ["🎯 Vind alle woorden in het letterrooster.", "📱 Sleep over een woord, of tik op de eerste en de laatste letter.", "⌨️ Sleep met de muis over het woord.", "💡 Woorden staan horizontaal, verticaal of schuin."], "quiz": ["🎯 Beantwoord zoveel mogelijk vragen juist.", "📱 Tik op een antwoord.", "⌨️ Toetsen 1–4 kiezen, Enter = volgende vraag.", "💡 Twijfel je? Streep eerst de antwoorden weg die zeker fout zijn."], "chess": ["🎯 Zet de koning van de computer schaakmat.", "📱 Tik op een stuk en daarna op het doelvak.", "⌨️ Klik op een stuk en daarna op het doelvak.", "♙ Jij speelt wit en begint.", "💡 Breng eerst je paarden en lopers naar het midden en rokeer vroeg."], "connect4": ["🎯 Leg als eerste vier schijven op een rij (ook schuin).", "📱 Tik op een kolom om een schijf te laten vallen.", "⌨️ Toetsen 1–7, of ◀ ▶ en spatie.", "💡 Het midden is de sterkste kolom."], "checkers": ["🎯 Sla alle stukken van de tegenstander of zet hem vast.", "📱 Tik op een schijf en dan op een vakje.", "⌨️ Klik op een schijf en dan op een vakje.", "⚠️ Slaan is verplicht (met de meeste stukken). Een dam mag over meerdere vakjes vliegen."], "othello": ["🎯 Heb op het einde de meeste schijven van jouw kleur.", "📱 Tik op een stip om een schijf te leggen.", "⌨️ Klik op een stip.", "🔄 Schijven die je insluit, draaien om naar jouw kleur.", "💡 Hoeken kunnen nooit meer omgedraaid worden: probeer ze te pakken."], "battleship": ["🎯 Laat alle schepen van de computer zinken voor hij de jouwe vindt.", "📱 Schud je vloot tot je tevreden bent en tik op ⚓ Start; tik daarna in de vijandelijke wateren om te vuren.", "⌨️ Klik op een vak om te vuren.", "💡 Na een treffer: schiet ernaast om de richting van het schip te vinden."], "blackjack": ["🎯 Kom dichter bij 21 dan de dealer zonder erover te gaan.", "📱 Gebruik de knoppen: kaart, passen, verdubbelen, delen.", "⌨️ h = kaart, s = passen, d = verdubbelen, spatie = delen.", "💡 Blackjack betaalt 3:2; de dealer past vanaf 17."], "solitaire": ["🎯 Leg alle kaarten per kleur op volgorde (aas tot heer) op de fundamenten.", "📱 Tik op een kaart (of reeks) en dan op het doel; tik op de voorraad om te trekken.", "⌨️ Klik op kaarten, spatie = trekken, u = ongedaan maken.", "💡 Tik nog eens op een gekozen kaart om ze naar een fundament te sturen."], "dots": ["🎯 Sluit de meeste hokjes.", "📱 Tik tussen twee stippen om een lijn te trekken.", "⌨️ Klik tussen twee stippen.", "💡 Wie een hokje sluit, mag nog eens. Geef je tegenstander geen derde zijde cadeau."], "yahtzee": ["🎯 Haal de hoogste score in 13 beurten.", "📱 Gooi, tik op dobbelstenen om ze vast te houden en tik op een rij om te scoren.", "⌨️ Spatie = gooien, 1–5 = vasthouden.", "💡 Je mag 3× gooien per beurt. Haal 63 in het bovenste deel voor 35 bonuspunten."] }, "mp": { "blokkenland": ["🎯 Bouw samen in dezelfde blokkenwereld.", "📱 Links slepen = lopen, rechts slepen = kijken, ⛏️ breken, 🧱 plaatsen, ⤒ springen (2× = vliegen).", "⌨️ WASD lopen, muis kijken, klik/X breken, rechtsklik/C plaatsen, 1–9 kiezen, spatie springen, F vliegen.", "💡 De wereld leeft bij de host: wie later meedoet, ziet alles wat al gebouwd is."], "ttt": ["🎯 Zet als eerste drie op een rij.", "📱 Tik op een leeg vakje als je aan de beurt bent.", "⌨️ Klik op een vakje.", "💡 De verliezer begint de volgende ronde."], "connect4": ["🎯 Leg als eerste vier schijven op een rij (ook schuin).", "📱 Tik op een kolom als je aan de beurt bent.", "⌨️ Toetsen 1–7, of ◀ ▶ en spatie.", "💡 Bouw dreigingen op twee plaatsen tegelijk."], "checkers": ["🎯 Sla alle stukken van je tegenstander of zet hem vast.", "📱 Tik op een schijf en dan op een vakje.", "⌨️ Klik op een schijf en dan op een vakje.", "⚠️ Slaan is verplicht (met de meeste stukken); dammen vliegen."], "othello": ["🎯 Heb op het einde de meeste schijven van jouw kleur.", "📱 Tik op een stip om een schijf te leggen.", "⌨️ Klik op een stip.", "💡 Hoeken zijn goud waard: die kunnen niet meer omgedraaid worden."], "battleship": ["🎯 Laat alle schepen van je tegenstander zinken.", "📱 Zet je vloot neer (🔀 Schud of 🔁 Draaien) en tik op ✅ Klaar; tik daarna op zijn water om te vuren.", "⌨️ Klik om schepen te plaatsen en om te vuren.", "💡 Na een treffer: schiet ernaast om de richting te vinden."], "chess": ["🎯 Zet de koning van je tegenstander schaakmat.", "📱 Tik op een stuk en daarna op het doelvak.", "⌨️ Klik op een stuk en daarna op het doelvak.", "🏳️ Opgeven kan met de knop onder het bord."], "dots": ["🎯 Sluit de meeste hokjes.", "📱 Tik tussen twee stippen om een lijn te trekken.", "⌨️ Klik tussen twee stippen.", "💡 Wie een hokje sluit, mag nog eens."], "pong": ["🎯 Speel de bal langs je tegenstander; eerste tot 7 wint.", "📱 Sleep op het speelveld of gebruik de knoppen ▲ ▼.", "⌨️ ▲ ▼.", "💡 Raak de bal met de rand van je peddel voor een scherpe hoek."], "tanks": ["🎯 Raak de andere tank 5 keer.", "📱 Knoppen ↺ ↻ draaien, ▲ ▼ rijden, 🔥 schieten.", "⌨️ Pijltjes of WASD, spatie = schieten.", "💡 Kogels stuiteren één keer tegen de muur: schiet om de hoek!"], "flight": ["🎯 Vlieg samen rond, land op vliegvelden en het vliegdekschip, race door ringen of vecht in de lucht.", "📱 Knoppen voor rollen, neus op/neer, gas, vuren, raketten, flares en landingsgestel.", "⌨️ Klik in het beeld en stuur met de muis · Z/S neus omlaag/omhoog · Q/D rollen · A/E roer · Shift/Ctrl gas · G landingsgestel · B remmen · C camera · Esc menu.", "💡 Opstijgen: vol gas en optrekken boven de startsnelheid. Landen: gas terug, landingsgestel uit, rustig dalen met de vleugels recht."], "race": ["🎯 Rij als eerste 3 ronden rond de baan.", "📱 Gebruik ◀ ▶ om te sturen en 🔺 Gas / 🔻 Rem.", "⌨️ Z of ↑ gas · S of ↓ rem · Q/D of ←/→ sturen.", "💡 Gele pijlen geven een boost, gras remt je af en de vangrail kaatst je terug."], "dday": ["🎯 Speel met je team: verover punten, win het teamgevecht, steel de vlag of overleef de zombies.", "📱 Joystick om te lopen, sleep om te kijken, knoppen voor schieten, richten, healen en meer.", "⌨️ Z/Q/S/D lopen · muis kijken · klik schieten · rechtsklik richten · spatie springen · W hurken · T voertuig · Tab scorebord.", "💡 Kies in het menu (Esc) je klasse, de spelmodus, de map en de moeilijkheid van de bots."], "tron": ["🎯 Blijf het langst rijden zonder ergens tegenaan te botsen.", "📱 Veeg op het veld of gebruik de knoppen om af te slaan.", "⌨️ Pijltjes of WASD.", "💡 Laatste die rijdt wint de ronde; 3 rondes winnen = spel gewonnen."], "hockey": ["🎯 Schiet de puck in het doel van je tegenstander; eerste tot 5 wint.", "📱 Sleep je schijf in de onderste helft.", "⌨️ Pijltjes, of sleep met de muis.", "💡 Kaats via de zijkant om langs de verdediging te komen."], "snakeduel": ["🎯 Wees de laatste slang die overleeft.", "📱 Veeg op het bord of gebruik de knoppen.", "⌨️ Pijltjes of WASD.", "🍎 Eet appels om te groeien; bots nergens tegen.", "💡 3 rondes winnen = spel gewonnen."], "quiz": ["🎯 Geef zo snel mogelijk het juiste antwoord.", "📱 Tik op een antwoord.", "⌨️ Toetsen 1–4.", "💡 Het snelste juiste antwoord krijgt 100 punten."], "draw": ["🎯 Teken het woord zodat de anderen het raden, of raad wat de tekenaar maakt.", "📱 Teken met je vinger; raders typen hun gok en tikken op Enter.", "⌨️ Teken met de muis; typ je gok en druk op Enter.", "💡 Sneller raden = meer punten, voor de rader én de tekenaar."], "words": ["🎯 Vorm zoveel mogelijk woorden van minstens 3 letters uit de 9 letters.", "📱 Typ een woord en tik op Enter of toevoegen.", "⌨️ Typ en druk op Enter.", "💡 Elke letter zo vaak als hij voorkomt; langere woorden geven meer punten."], "yahtzee": ["🎯 Haal samen 13 beurten lang de hoogste score.", "📱 Gooi, tik op dobbelstenen om ze vast te houden en tik op een rij in jouw kolom.", "⌨️ Spatie = gooien, 1–5 = vasthouden.", "💡 63 punten in het bovenste deel = 35 bonuspunten."], "weerwolven": ["🎯 Burgers: ontmasker de weerwolven. Weerwolven: blijf onopgemerkt.", "📱 Bekijk je rolkaart (tik om ze te verbergen) en tik op een speler om te kiezen.", "⌨️ Klik op een speler om te kiezen.", "🌙 ’s Nachts kiezen de wolven een slachtoffer, overdag stemt het dorp.", "💡 Praat met elkaar (in het echt of via de chat) voor je stemt."], "spionnen": ["🎯 Vind als team al je geheime woorden voor de andere ploeg.", "📱 Spionmeesters geven een hint: één woord + een aantal.", "⌨️ Teamleden klikken op de woorden die bij de hint passen.", "💀 Tik nooit op de moordenaar — dan verlies je meteen."], "jeopardy": ["🎯 Verdien de meeste punten met juiste antwoorden.", "📱 Wie aan de beurt is, kiest een vakje; iedereen buzzt met de knop.", "⌨️ Spatie = buzzen, 1–4 = antwoord kiezen.", "💡 Fout geantwoord kost punten: buzz alleen als je het (bijna) zeker weet."], "stadland": ["🎯 Vul per categorie een woord in dat met de letter begint.", "📱 Tik in de vakjes en typ; tik op ✋ STOP! als alles ingevuld is.", "⌨️ Typ en spring met Tab naar het volgende vak.", "🗳️ Stem ✗ op foute antwoorden. Uniek = 10 pt, dubbel = 5 pt."], "bluf": ["🎯 Bied hoeveel stenen van een waarde er in totaal liggen, of roep Bluf!", "📱 Kies aantal en waarde en tik op bieden, of op Bluf!", "⌨️ ↑↓ aantal, 1–6 waarde, Enter bieden, B = bluf.", "💡 Enen zijn joker. Wie fout zit, verliest een steen."], "kleurkaart": ["🎯 Raak als eerste al je kaarten kwijt.", "📱 Tik op een kaart met dezelfde kleur, hetzelfde getal of symbool.", "⌨️ ←/→ kiezen, Enter spelen, D pakken/passen, L = laatste kaart.", "💡 Vergeet niet “laatste kaart” te melden!"], "pesten": ["🎯 Raak als eerste al je kaarten kwijt.", "📱 Tik op een kaart van dezelfde kleur of waarde.", "⌨️ ←/→ kiezen, Enter spelen, D pakken, L = laatste kaart.", "🃏 2 = pak 2, joker = pak 5, 7 blijft, 8 slaat over, heer nog eens, aas draait om, boer kiest kleur.", "💡 Je mag niet eindigen op een pestkaart."], "drawteams": ["🎯 Teken voor je team en raad wat je teamgenoot tekent.", "📱 Teken met je vinger; alleen je eigen team raadt (typ + Enter).", "⌨️ Teken met de muis; typ je gok en druk op Enter.", "💡 Binnen 20 seconden geraden = bonuspunt."], "sudoku": ["🎯 Vul samen het sudokurooster in.", "📱 Tik op een vakje en daarna op een cijfer.", "⌨️ Pijltjes + cijfers 1–9, Backspace wist, H = hint.", "💡 Juiste cijfers krijgen de kleur van de speler die ze vond."], "mines": ["🎯 Open samen alle veilige vakjes zonder op een mijn te stappen.", "📱 Tik = graven, lang drukken of vlag-modus = 🚩.", "⌨️ Klik = graven, rechtsklik = vlag, F wisselt modus.", "💡 Tik op een cijfer met genoeg vlaggen om alle buren te openen."], "woordzoeker": ["🎯 Vind de meeste woorden in het gedeelde rooster.", "📱 Sleep over een woord, of tik op de eerste en de laatste letter.", "⌨️ Sleep met de muis over het woord.", "💡 Woorden staan ook schuin; wie het eerst vindt, krijgt het punt."] } };
   const lsg = (k, d) => {
     try {
       const v = localStorage.getItem(k);
