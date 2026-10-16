@@ -370,6 +370,119 @@ function swipe(el, f) {
     f(Math.abs(dx) > Math.abs(dy) ? dx > 0 ? "ArrowRight" : "ArrowLeft" : dy > 0 ? "ArrowDown" : "ArrowUp");
   });
 }
+const SOLDIER_SKIN = {
+  helmet: 7038088,
+  helmetDark: 5196396,
+  band: 7163235,
+  strap: 725072,
+  face: 6256557,
+  faceDark: 4149124,
+  eyeWhite: 15197922,
+  pupil: 6116704,
+  vest: 6974098,
+  vestDark: 5592445,
+  stripe: 5196905,
+  sleeve: 3424394,
+  hand: 10466255,
+  belt: 10063756,
+  pants: 6381452,
+  pantsDark: 5000058,
+  knee: 10326664,
+  boot: 7300441
+};
+function soldierPalette(variant) {
+  if (!variant) return SOLDIER_SKIN;
+  const out = {}, c = new THREE.Color(), h = {};
+  for (const k in SOLDIER_SKIN) {
+    c.setHex(SOLDIER_SKIN[k]);
+    c.getHSL(h);
+    const keep = k === "eyeWhite" || k === "pupil" || k === "belt" || k === "knee" || k === "boot";
+    if (!keep) c.setHSL((h.h + (variant === 1 ? 0.36 : variant === 2 ? 0.6 : 0.15)) % 1, Math.min(1, h.s * 1.05), h.l);
+    out[k] = c.getHex();
+  }
+  return out;
+}
+const _soldierGeo = {};
+const _sg = (k, f) => _soldierGeo[k] || (_soldierGeo[k] = f());
+const _soldierMat = {};
+function _sm(hex) {
+  return _soldierMat[hex] || (_soldierMat[hex] = new THREE.MeshStandardMaterial({ color: hex, roughness: 0.92, flatShading: true }));
+}
+function makeSoldier(o = {}) {
+  const P = soldierPalette(o.variant || 0), g = new THREE.Group();
+  const box = (w, h, d) => _sg("b" + w + "_" + h + "_" + d, () => new THREE.BoxGeometry(w, h, d));
+  const part = (geo, hex, x, y, z, parent = g) => {
+    const m = new THREE.Mesh(geo, _sm(hex));
+    m.position.set(x, y, z);
+    parent.add(m);
+    return m;
+  };
+  const mkLeg = (sx) => {
+    const L = new THREE.Group();
+    L.position.set(sx * 0.13, 0.93, 0);
+    g.add(L);
+    part(box(0.19, 0.44, 0.21), P.pants, 0, -0.22, 0, L);
+    part(box(0.18, 0.4, 0.2), P.pantsDark, 0, -0.62, 0, L);
+    part(box(0.21, 0.15, 0.09), P.knee, 0, -0.52, 0.09, L);
+    part(box(0.22, 0.13, 0.32), P.boot, 0, -0.86, 0.04, L);
+    return L;
+  };
+  const legL = mkLeg(-1), legR = mkLeg(1);
+  part(box(0.5, 0.1, 0.29), P.belt, 0, 0.97, 0);
+  const torso = new THREE.Group();
+  torso.position.y = 1.02;
+  g.add(torso);
+  part(box(0.48, 0.56, 0.29), P.vest, 0, 0.28, 0, torso);
+  part(box(0.5, 0.2, 0.28), P.vestDark, 0, 0.08, 5e-3, torso);
+  part(box(0.4, 0.045, 0.02), P.stripe, 0, 0.47, 0.16, torso);
+  part(box(0.4, 0.045, 0.02), P.stripe, 0, 0.39, 0.16, torso);
+  part(box(0.52, 0.08, 0.3), P.vest, 0, 0.55, 0, torso);
+  const mkArm = (sx) => {
+    const A = new THREE.Group();
+    A.position.set(sx * 0.3, 0.54, 0);
+    torso.add(A);
+    part(box(0.13, 0.58, 0.15), P.sleeve, 0, -0.29, 0, A);
+    part(box(0.11, 0.16, 0.12), P.hand, 0, -0.66, 0, A);
+    return A;
+  };
+  const armL = mkArm(-1), armR = mkArm(1);
+  let band = null;
+  if (o.armband != null) {
+    band = part(box(0.16, 0.07, 0.17), o.armband, 0.33, 0.38, 0, torso);
+  }
+  part(box(0.12, 0.1, 0.12), P.faceDark, 0, 0.62, 0, torso);
+  const head = new THREE.Group();
+  head.position.y = 0.68;
+  head.scale.setScalar(0.86);
+  torso.add(head);
+  part(box(0.25, 0.33, 0.25), P.face, 0, 0.17, 0, head);
+  part(box(0.25, 0.09, 0.03), P.strap, 0, 0.04, 0.125, head);
+  part(box(0.12, 0.33, 0.255), P.faceDark, 0.068, 0.17, -2e-3, head);
+  const eyeG = _sg("eye", () => new THREE.CylinderGeometry(0.066, 0.066, 0.02, 12)), pupG = _sg("pup", () => new THREE.CylinderGeometry(0.036, 0.036, 0.022, 12));
+  for (const sx of [-1, 1]) {
+    const e = part(eyeG, P.eyeWhite, sx * 0.062, 0.24, 0.13, head);
+    e.rotation.x = Math.PI / 2;
+    const pu = part(pupG, P.pupil, sx * 0.062, 0.235, 0.141, head);
+    pu.rotation.x = Math.PI / 2;
+  }
+  const dome = part(_sg("dome", () => new THREE.SphereGeometry(0.2, 7, 4, 0, Math.PI * 2, 0, Math.PI / 2)), P.helmet, 0, 0.33, 0, head);
+  dome.scale.set(1, 0.72, 1.05);
+  const rim = part(_sg("rim", () => new THREE.CylinderGeometry(0.205, 0.215, 0.06, 7)), P.band, 0, 0.33, 0, head);
+  part(box(0.05, 0.22, 0.2), P.helmetDark, -0.16, 0.24, -0.01, head);
+  part(box(0.05, 0.22, 0.2), P.helmetDark, 0.16, 0.24, -0.01, head);
+  if (o.seated) {
+    legL.rotation.x = legR.rotation.x = -1.45;
+    armL.rotation.x = armR.rotation.x = -0.9;
+  }
+  return { g, legL, legR, armL, armR, head, torso, band };
+}
+function animateSoldier(s, phase, amount) {
+  const a = Math.sin(phase) * 0.65 * amount;
+  s.legL.rotation.x = a;
+  s.legR.rotation.x = -a;
+  s.armL.rotation.x = -a * 0.7;
+  s.armR.rotation.x = a * 0.7;
+}
 const MP = [
   { id: "dday", n: "D-DAY", e: "🪖", c: "Samen", g: "#43545b,#c14d35", min: 1, max: 8, bots: true, run(st, net) {
     const W = Math.min(900, Math.max(640, Math.round((window.innerWidth || 800) * 1.35))), H = Math.round(W * 9 / 16), TEAM = ["Aanvallers", "Verdedigers"], TC = [5023727, 15689048], TT = ["#4ca7ef", "#ef6558"];
@@ -464,7 +577,7 @@ const MP = [
  @media(max-width:600px){.ddobjective{font-size:12px}.ddclock{font-size:15px}.ddtop{padding:6px 8px}.ddstatus,.ddcall{font-size:11px;padding:5px 7px}.ddcontrols .btn{padding:9px 11px;min-width:52px}}
  `;
     document.head.append(style);
-    const score = E("div", "sc"), frame = E("div", "ddframe"), hint = E("div", "hint d dhint", "AZERTY: Z/Q/S/D lopen · kijken met muis, slepen, A/E of pijltjes · linksklik/F schieten · rechtsklik/C richten · R herladen · 1–5 wapens · G granaat · spatie springen · W hurken · Shift sprinten · Esc/⚙ menu · H heal · V help · X opgeven · Tab score · B zandzak · T voertuig · v17");
+    const score = E("div", "sc"), frame = E("div", "ddframe"), hint = E("div", "hint d dhint", "AZERTY: Z/Q/S/D lopen · kijken met muis, slepen, A/E of pijltjes · linksklik/F schieten · rechtsklik/C richten · R herladen · 1–5 wapens · G granaat · spatie springen · W hurken · Shift sprinten · Esc/⚙ menu · H heal · V help · X opgeven · Tab score · B zandzak · T voertuig · v18");
     st.prepend(score);
     st.append(frame, hint);
     const T = three(frame, W, H, { fov: 74, far: 390 }), S = T.s, cam = T.cam, c = T.c, r = T.r;
@@ -1064,18 +1177,19 @@ const MP = [
       return max;
     }
     function createAvatar(p) {
-      const g = new THREE.Group(), col = net.pcol(p) || "#889099", hex = parseInt(col.replace("#", ""), 16) || 8949913;
-      const shirt = new THREE.Mesh(unitG, mat(hex, 0.82)), head = new THREE.Mesh(headG, mat(12822662)), helmet = new THREE.Mesh(new THREE.SphereGeometry(0.27, 9, 7, 0, Math.PI * 2, 0, Math.PI / 2), mat(p.team ? 4935760 : 7105101));
-      shirt.position.y = 0.8;
-      head.position.y = 1.55;
-      helmet.position.y = 1.72;
-      const pack2 = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.58, 0.24), mat(p.team ? 4735803 : 4672317));
-      pack2.position.set(0, 0.86, -0.28);
-      const strap = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.13, 0.34), mat(TC[p.team]));
-      strap.position.set(0, 1.12, 0);
-      const gun = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.14, 0.8), mats.metal);
-      gun.position.set(0.28, 0.9, 0.44);
-      g.add(shirt, head, helmet, pack2, strap, gun);
+      const sd = makeSoldier({ variant: p.team ? 1 : 0, armband: TC[p.team] }), g = sd.g;
+      g.userData.sd = sd;
+      const gun = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.78), mats.metal);
+      gun.position.set(0.1, 0.3, 0.36);
+      sd.torso.add(gun);
+      const stock = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.12, 0.22), mats.wood);
+      stock.position.set(0.1, 0.27, 0.02);
+      sd.torso.add(stock);
+      const pack2 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.42, 0.18), mat(p.team ? 5913660 : 4144988));
+      pack2.position.set(0, 0.3, -0.24);
+      sd.torso.add(pack2);
+      sd.armR.rotation.set(-1.15, 0, 0.1);
+      sd.armL.rotation.set(-1.3, 0, -0.5);
       S.add(g);
       return g;
     }
@@ -1241,12 +1355,6 @@ const MP = [
         let q = ps.get(p.id);
         if (!q) q = addPlayer(p, i);
         else teamCounts[q.team]++;
-        if (q.model) {
-          const sh = q.model.children[0];
-          if (sh && sh.material.color.getHexString() !== (net.pcol(p) || "#888888").slice(1).toLowerCase()) {
-            sh.material.color.set(net.pcol(p) || "#888888");
-          }
-        }
       });
     }
     let wantBots = 7;
@@ -2899,6 +3007,7 @@ const MP = [
       });
     }
     function drawEntities(dt) {
+      var _a, _b;
       for (const n of net.players) {
         const p = ps.get(n.id);
         if (!p) continue;
@@ -2990,8 +3099,19 @@ const MP = [
           p.tag.visible = true;
           p.tag.position.set(p.rx, ground(p.rz) + (p.alive ? 2.35 : 1.1), p.rz);
         } else if (p.tag) p.tag.visible = false;
-        const head = p.model.children[1];
-        if (head) head.material.color.set(p.team ? 12162937 : 13085320);
+        {
+          const sd = p.model.userData.sd;
+          if (sd) {
+            const mvd = Math.hypot(p.rx - ((_a = p.lx) != null ? _a : p.rx), p.rz - ((_b = p.lz) != null ? _b : p.rz));
+            p.lx = p.rx;
+            p.lz = p.rz;
+            const spd = Math.min(1, mvd / Math.max(dt, 1e-3) / 6);
+            p.wph = (p.wph || 0) + mvd * 4.2;
+            const a = Math.sin(p.wph) * 0.7 * spd * (p.alive ? 1 : 0);
+            sd.legL.rotation.x = a;
+            sd.legR.rotation.x = -a;
+          }
+        }
       }
       {
         const seen = /* @__PURE__ */ new Set();
