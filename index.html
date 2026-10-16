@@ -390,7 +390,7 @@ html.spz-cb .card .fav[aria-pressed=true]::after{content:"";position:absolute;in
 
 #admb{position:fixed;left:14px;bottom:16px;z-index:60;width:52px;height:52px;border-radius:50%;border:0;font-size:26px;cursor:pointer;display:none;background:linear-gradient(135deg,#f7d046,#f59e0b);box-shadow:0 6px 18px #f59e0b88;animation:admp 2.4s infinite}
 @keyframes admp{0%,100%{box-shadow:0 6px 18px #f59e0b88}50%{box-shadow:0 6px 26px #f59e0bdd}}
-.pav[data-adm]{box-shadow:0 0 0 2px #f7d046,0 0 12px #f59e0b!important;animation:admg 2s infinite}
+.pav[data-adm]{box-shadow:0 0 0 2px #f7d046,0 0 12px #f59e0b!important}
 @keyframes admg{0%,100%{filter:none}50%{filter:brightness(1.15) drop-shadow(0 0 4px #f7d046)}}
 .pav[data-adm]::before{content:'👑';position:absolute;top:-.62em;left:50%;transform:translateX(-50%) rotate(-8deg);font-size:.55em;line-height:1;filter:drop-shadow(0 1px 1px #0006)}
 .admtag{display:inline-block;margin-left:5px;padding:1px 7px;border-radius:99px;background:linear-gradient(90deg,#f7d046,#f59e0b);color:#3b2600;font-size:10.5px;font-weight:900;letter-spacing:.06em;vertical-align:2px}
@@ -398,7 +398,7 @@ html.spz-cb .card .fav[aria-pressed=true]::after{content:"";position:absolute;in
 .adm-g button:active{transform:scale(.96)}.adm-in{width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--ln,#ccc);background:var(--bg);color:var(--tx);font:inherit;margin:6px 0}
 .adm-banner{position:fixed;left:50%;top:18%;transform:translate(-50%,-50%) scale(.6);z-index:9995;max-width:92vw;text-align:center;padding:18px 26px;border-radius:22px;background:linear-gradient(120deg,#6c5ce7,#e63fa0,#f7b733);color:#fff;font:900 clamp(20px,5vw,34px) system-ui;box-shadow:0 14px 40px #0007;opacity:0;transition:transform .35s cubic-bezier(.2,1.6,.4,1),opacity .3s;pointer-events:none}
 .adm-banner.on{opacity:1;transform:translate(-50%,-50%) scale(1)}.adm-banner small{display:block;font-size:13px;font-weight:700;opacity:.9;margin-bottom:4px}
-.adm-disco{position:fixed;inset:0;z-index:9989;pointer-events:none;mix-blend-mode:screen;animation:disco .45s steps(1) infinite}
+.adm-disco{position:fixed;inset:0;z-index:9989;pointer-events:none;animation:disco .45s steps(1) infinite}
 @keyframes disco{0%{background:#ff006633}25%{background:#00e5ff33}50%{background:#ffe60033}75%{background:#8b5cf633}}
 #admfx{position:fixed;inset:0;z-index:9990;pointer-events:none}
 @keyframes admshake{0%,100%{transform:translate(0)}20%{transform:translate(-14px,6px) rotate(-1deg)}40%{transform:translate(12px,-8px) rotate(1deg)}60%{transform:translate(-10px,-4px)}80%{transform:translate(8px,6px)}}
@@ -45664,8 +45664,12 @@ draw();
       deco(el, lookFor(el.textContent.trim(), col));
     });
   };
-  new MutationObserver(() => {
-    if (!decoQ) decoQ = requestAnimationFrame(decoAll);
+  const hasPav = (ms) => {
+    for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && (n.classList.contains("pav") || n.querySelector && n.querySelector(".pav"))) return true;
+    return false;
+  };
+  new MutationObserver((ms) => {
+    if (!decoQ && hasPav(ms)) decoQ = requestAnimationFrame(decoAll);
   }).observe(document.body, { childList: true, subtree: true });
   const pavHTML = (av, col, lk, cls) => '<span class="pav ' + (cls || "") + '" data-own style="--c:' + esc2(col || "#888") + '"' + (lk && lk.acc ? ' data-acc="' + esc2(lk.acc) + '"' : "") + (lk && lk.fr ? ' data-fr="' + esc2(lk.fr) + '"' : "") + (lk && lk.bg ? ' data-bg="' + esc2(lk.bg) + '"' : "") + ">" + esc2(av) + "</span>";
   const ST = (typeof MQ_T !== "undefined" ? MQ_T : "spelplaza-rsx/v1/") + "soc/";
@@ -46010,7 +46014,7 @@ draw();
       const f = W.fr[u], s = FS[u];
       if ((NET.players || []).some((p) => p.uid === u)) return;
       const r = E("div", "hrow");
-      const on = s && s.on && Date.now() - (s.t || 0) < 18e4;
+      const on = s && s.on && Math.abs(Date.now() - (s.t || 0)) < 9e5;
       r.innerHTML = '<span class="ic">' + pavHTML(f.av || "🙂", f.col, f.lk, "s") + '</span><div class="tx"><b></b><small><span class="on-d' + (on ? " on" : "") + '"></span>' + (on ? "online" : "offline") + "</small></div>";
       r.querySelector("b").textContent = f.n || fmtCode(u);
       if (on) {
@@ -46402,7 +46406,7 @@ draw();
     b.lastChild.textContent = "Vrienden (" + fr.length + ")";
     if (!fr.length) b.append(E("p", "hnote", "Nog geen vrienden."));
     fr.sort((a, b2) => (FS[b2] && FS[b2].on ? 1 : 0) - (FS[a] && FS[a].on ? 1 : 0)).forEach((u) => {
-      const fd = W.fr[u], s = FS[u], on = s && s.on && Date.now() - (s.t || 0) < 18e4;
+      const fd = W.fr[u], s = FS[u], on = s && s.on && Math.abs(Date.now() - (s.t || 0)) < 9e5;
       const what = on ? s.room ? "🟢 in een kamer" : s.g ? "🟢 speelt " + ((G.find((g) => g.id === s.g) || MP.find((g) => g.id === s.g) || {}).n || "een spel") : "🟢 online" : "offline";
       const r = row(pavHTML(fd.av || "🙂", fd.col, fd.lk, "s"), fd.n || fmtCode(u), what);
       if (on && s.room && s.room !== NET.code && !s.full) {
@@ -46672,9 +46676,23 @@ window.SPZ_EXCL = { "🦭1": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD
       document.body.append(fxC);
       fxX = fxC.getContext("2d");
     }
-    fxC.width = innerWidth * Math.min(2, devicePixelRatio || 1);
-    fxC.height = innerHeight * Math.min(2, devicePixelRatio || 1);
-    fxX.setTransform(fxC.width / innerWidth, 0, 0, fxC.height / innerHeight, 0, 0);
+    if (fxC.width !== innerWidth || fxC.height !== innerHeight) {
+      fxC.width = innerWidth;
+      fxC.height = innerHeight;
+    }
+    fxX.setTransform(1, 0, 0, 1, 0, 0);
+  }
+  const SPR = {};
+  function spr(e) {
+    if (SPR[e]) return SPR[e];
+    const c = document.createElement("canvas");
+    c.width = c.height = 64;
+    const x = c.getContext("2d");
+    x.font = "52px system-ui";
+    x.textAlign = "center";
+    x.textBaseline = "middle";
+    x.fillText(e, 32, 36);
+    return SPR[e] = c;
   }
   function fxLoop() {
     if (fxRun) return;
@@ -46694,20 +46712,17 @@ window.SPZ_EXCL = { "🦭1": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD
         if (a <= 0) continue;
         fxX.globalAlpha = a;
         if (p.e) {
-          fxX.font = p.s + "px system-ui";
-          fxX.textAlign = "center";
-          fxX.save();
-          fxX.translate(p.x, p.y);
-          fxX.rotate(p.r);
-          fxX.fillText(p.e, 0, 0);
-          fxX.restore();
+          const im = p.im || (p.im = spr(p.e)), h = p.s;
+          if (p.r) {
+            fxX.setTransform(Math.cos(p.r), Math.sin(p.r), -Math.sin(p.r), Math.cos(p.r), p.x, p.y);
+            fxX.drawImage(im, -h / 2, -h / 2, h, h);
+            fxX.setTransform(1, 0, 0, 1, 0, 0);
+          } else fxX.drawImage(im, p.x - h / 2, p.y - h / 2, h, h);
         } else if (p.rect) {
-          fxX.save();
-          fxX.translate(p.x, p.y);
-          fxX.rotate(p.r);
+          fxX.setTransform(Math.cos(p.r), Math.sin(p.r), -Math.sin(p.r), Math.cos(p.r), p.x, p.y);
           fxX.fillStyle = p.c;
           fxX.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2);
-          fxX.restore();
+          fxX.setTransform(1, 0, 0, 1, 0, 0);
         } else {
           fxX.fillStyle = p.c;
           fxX.beginPath();
@@ -46721,7 +46736,8 @@ window.SPZ_EXCL = { "🦭1": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD
         }
       }
       fxX.globalAlpha = 1;
-      parts = parts.filter((p) => p.t < p.life);
+      parts = parts.filter((p) => p.t < p.life && p.y < innerHeight + 80 && p.y > -innerHeight * 1.6);
+      if (parts.length > 500) parts.splice(0, parts.length - 500);
       if (parts.length) requestAnimationFrame(step);
       else {
         fxRun = 0;
@@ -46744,7 +46760,7 @@ window.SPZ_EXCL = { "🦭1": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD
   const FX = {
     confetti() {
       fxCanvas();
-      for (let i = 0; i < 220; i++) parts.push({ x: Math.random() * innerWidth, y: -20 - Math.random() * innerHeight * 0.6, vx: (Math.random() - 0.5) * 80, vy: 120 + Math.random() * 180, g: 30, s: 7 + Math.random() * 7, r: Math.random() * 6, vr: (Math.random() - 0.5) * 8, rect: 1, c: COL[i % COL.length], life: 4.5 + Math.random() * 2, t: 0 });
+      for (let i = 0; i < 150; i++) parts.push({ x: Math.random() * innerWidth, y: -20 - Math.random() * innerHeight * 0.6, vx: (Math.random() - 0.5) * 80, vy: 120 + Math.random() * 180, g: 30, s: 7 + Math.random() * 7, r: Math.random() * 6, vr: (Math.random() - 0.5) * 8, rect: 1, c: COL[i % COL.length], life: 4.5 + Math.random() * 2, t: 0 });
       fxLoop();
       try {
         [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => beep(f, 0.1, "triangle", 0.04), i * 90));
@@ -46766,7 +46782,7 @@ window.SPZ_EXCL = { "🦭1": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD
     rain(e) {
       fxCanvas();
       e = [...String(e || "🎉")].slice(0, 2).join("") || "🎉";
-      for (let i = 0; i < 90; i++) parts.push({ x: Math.random() * innerWidth, y: -30 - Math.random() * innerHeight, vx: (Math.random() - 0.5) * 40, vy: 140 + Math.random() * 160, g: 20, s: 24 + Math.random() * 22, r: Math.random() - 0.5, vr: (Math.random() - 0.5) * 2, e, life: 6, t: 0 });
+      for (let i = 0; i < 60; i++) parts.push({ x: Math.random() * innerWidth, y: -30 - Math.random() * innerHeight, vx: (Math.random() - 0.5) * 40, vy: 140 + Math.random() * 160, g: 20, s: 24 + Math.random() * 22, r: Math.random() - 0.5, vr: (Math.random() - 0.5) * 2, e, life: 6, t: 0 });
       fxLoop();
     },
     say(t, from, raw) {
@@ -46835,12 +46851,12 @@ window.SPZ_EXCL = { "🦭1": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD
     },
     snow() {
       fxCanvas();
-      for (let i = 0; i < 160; i++) parts.push({ x: Math.random() * innerWidth, y: -20 - Math.random() * innerHeight, vx: (Math.random() - 0.5) * 30, vy: 40 + Math.random() * 60, g: 0, s: 16 + Math.random() * 14, r: 0, vr: Math.random() - 0.5, e: "❄️", life: 12, t: 0 });
+      for (let i = 0; i < 110; i++) parts.push({ x: Math.random() * innerWidth, y: -20 - Math.random() * innerHeight, vx: (Math.random() - 0.5) * 30, vy: 40 + Math.random() * 60, g: 0, s: 16 + Math.random() * 14, r: 0, vr: Math.random() - 0.5, e: "❄️", life: 12, t: 0 });
       fxLoop();
     },
     fire() {
       fxCanvas();
-      for (let i = 0; i < 140; i++) parts.push({ x: Math.random() * innerWidth, y: innerHeight + 20 + Math.random() * 200, vx: (Math.random() - 0.5) * 30, vy: -(120 + Math.random() * 220), g: -20, s: 22 + Math.random() * 26, r: 0, vr: 0, e: Math.random() < 0.8 ? "🔥" : "💥", life: 4 + Math.random() * 2, t: 0 });
+      for (let i = 0; i < 90; i++) parts.push({ x: Math.random() * innerWidth, y: innerHeight + 20 + Math.random() * 200, vx: (Math.random() - 0.5) * 30, vy: -(120 + Math.random() * 220), g: -20, s: 22 + Math.random() * 26, r: 0, vr: 0, e: Math.random() < 0.8 ? "🔥" : "💥", life: 4 + Math.random() * 2, t: 0 });
       fxLoop();
       try {
         beep(80, 0.6, "sawtooth", 0.05);
@@ -47196,9 +47212,13 @@ window.SPZ_EXCL = { "🦭1": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD
       else delete el.dataset.adm;
     });
   }
+  const hasPav = (ms) => {
+    for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && (n.classList.contains("pav") || n.querySelector && n.querySelector(".pav"))) return true;
+    return false;
+  };
   let dq = 0;
-  new MutationObserver(() => {
-    if (!dq) dq = requestAnimationFrame(() => {
+  new MutationObserver((ms) => {
+    if (!dq && hasPav(ms)) dq = requestAnimationFrame(() => {
       dq = 0;
       decoAdm();
     });
@@ -47314,7 +47334,7 @@ window.SPZ_EXCL = { "🦭1": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD
     onlOn = true;
     S.sub("u/+/st", (t, d) => {
       const u = t.split("/")[t.split("/").length - 2];
-      if (d && d.on && Date.now() - (d.t || 0) < 18e4) ONL[u] = d;
+      if (d && d.on && Math.abs(Date.now() - (d.t || 0)) < 9e5) ONL[u] = Object.assign({ seen: Date.now() }, d);
       else delete ONL[u];
       clearTimeout(onlT);
       onlT = setTimeout(() => {
@@ -47576,7 +47596,7 @@ window.SPZ_EXCL = { "🦭1": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD
     const mu = new Set(NET.isHost ? [...muted] : roomState.muted || []);
     (NET.players || []).forEach((p) => {
       if (p.id === NET.me.id) return;
-      const r = pRow(p, p.host ? "host" : p.adm ? "👑 admin" : p.bot ? "bot" : mu.has(p.id) ? "🔇 gedempt" : "speler");
+      const r = pRow(p, (p.host ? "host" : p.adm ? "👑 admin" : p.bot ? "bot" : mu.has(p.id) ? "🔇 gedempt" : "speler") + (p.uid ? " · " + p.uid.slice(0, 4) + "-" + p.uid.slice(4) : ""));
       if (!p.adm && !p.host) {
         const k = E("button", "btn", p.bot ? "🗑 Bot weg" : "🚫 Eruit");
         let sure = 0;
