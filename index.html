@@ -22601,6 +22601,13 @@ const PROFILE = {
   },
   set(p) {
     LS("sp_profile", JSON.stringify({ name: String(p.name || "").slice(0, 16), av: p.av, col: p.col }));
+    clearTimeout(this._pt);
+    this._pt = setTimeout(() => {
+      try {
+        NET.profUpdate();
+      } catch (e) {
+      }
+    }, 200);
   }
 };
 const XP_FOR = { played: 5, mpPlayed: 10, mpDone: 15, mpWon: 40, ddKill: 2, ddRevive: 3 };
@@ -23294,11 +23301,41 @@ const NET = {
       showReaction(e, c.peer);
       return;
     }
+    if (m.k === "prof") {
+      const p = this.players.find((x) => x.id === c.peer);
+      if (!p) return;
+      if (AVATARS.includes(m.av)) p.av = m.av;
+      if (COLORS.includes(m.col)) p.col = m.col;
+      p.lk = lkClean(m.lk);
+      this._bcast(this._playersMsg());
+      this._emitPlayers();
+      return;
+    }
     if (m.k === "adm") {
       window.SPZ_ADMHOST && SPZ_ADMHOST(m, c.peer);
       return;
     }
     if (m.k === "g") this._deliver(m.d, c.peer);
+  },
+  profUpdate() {
+    if (this.state === "off" || !this.code) return;
+    const pr = PROFILE.get();
+    this.me.av = pr.av;
+    this.me.col = pr.col;
+    const lk = window.SPZ_LOOK ? lkClean(SPZ_LOOK()) : null;
+    if (this.isHost) {
+      const p = this.players.find((x) => x.id === this.me.id);
+      if (p) {
+        p.av = pr.av;
+        p.col = pr.col;
+        p.lk = lk;
+        this._bcast(this._playersMsg());
+        this._emitPlayers();
+      }
+    } else try {
+      this.hostConn && this.hostConn.open && this.hostConn.send({ k: "prof", av: pr.av, col: pr.col, lk });
+    } catch (e) {
+    }
   },
   kick(id) {
     if (!this.isHost) return;
@@ -45802,6 +45839,15 @@ draw();
   setInterval(() => {
     if (CL.length) pubStatus();
   }, 45e3);
+  const _pset = PROFILE.set.bind(PROFILE);
+  PROFILE.set = function(p) {
+    const r = _pset(p);
+    clearTimeout(W._ps);
+    W._ps = setTimeout(() => {
+      if (CL.length) pubStatus();
+    }, 400);
+    return r;
+  };
   const reqs = {};
   const reqCount = () => Object.keys(reqs).length;
   function friendsSubscribe() {
