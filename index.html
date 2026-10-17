@@ -52576,13 +52576,14 @@ window.SPZ_EXCL = { "🦭1": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD
       showQuiz(q, from, 20);
     }
   };
-  const HEAVY = { virus: 1, gravity: 1, blackout: 1, melt: 1, boo: 1, glitch: 1, tiny: 1, zoom: 1, invert: 1, bsod: 1, nuke: 1, cursors: 1, flip: 1, spin: 1, jump: 1, dance: 1, goto: 1 };
+  const HEAVY = { virus: 1, blackout: 1, boo: 1, bsod: 1, nuke: 1, goto: 1 };
   const ICON = { virus: "🦠", gravity: "⬇️", blackout: "🌑", melt: "🫠", boo: "👻", glitch: "📺", tiny: "🐜", zoom: "🔎", invert: "🔄", bsod: "💀", nuke: "☢️", cursors: "🖱️", flip: "🙃", spin: "🌀", jump: "🦘", dance: "💃", goto: "🎮" };
   for (const k in NEW) FX[k] = NEW[k];
   for (const k of Object.keys(FX)) {
     const f = FX[k];
     if (f._ab) continue;
     const w = function(arg, n, raw) {
+      animOn();
       if (HEAVY[k] && busy()) {
         toast("👑 Admin abuse: " + (ICON[k] || "✨") + " (kort, want je speelt)");
         try {
@@ -52596,6 +52597,20 @@ window.SPZ_EXCL = { "🦭1": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD
     w._ab = 1;
     w._o = f;
     FX[k] = w;
+  }
+  let anT = 0;
+  function animOn() {
+    const d = document.documentElement;
+    if (!d.classList.contains("spz-noanim") && !anT) return;
+    d.classList.remove("spz-noanim");
+    clearTimeout(anT);
+    anT = setTimeout(() => {
+      anT = 0;
+      try {
+        if (window.SPZ_SET && !SPZ_SET().anim) d.classList.add("spz-noanim");
+      } catch (e) {
+      }
+    }, 12e3);
   }
   const claimed = (g) => {
     try {
