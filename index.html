@@ -54437,9 +54437,9 @@ window.SPZ_EXCL = { "🦭1": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD
   document.head.append(st);
   const get = () => {
     try {
-      return localStorage.getItem("spz_icons") || "orig";
+      return localStorage.getItem("spz_icons") || "theme";
     } catch (e) {
-      return "orig";
+      return "theme";
     }
   };
   const apply = () => document.documentElement.setAttribute("data-spi", get());
