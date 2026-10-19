@@ -52012,6 +52012,49 @@ window.SPZ_EXCL = { "🦭1": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD
     b.append(g);
   }
   applySpeed();
+  const keepIn = (root, fn) => {
+    if (!root) return fn();
+    const key = (e, i) => e.tagName + "|" + (e.type || "") + "|" + i;
+    const grab = () => {
+      const m = {}, cnt2 = {};
+      let foc = null;
+      root.querySelectorAll("input:not([type=checkbox]):not([type=range]),textarea,select").forEach((e) => {
+        const b = key(e, 0);
+        cnt2[b] = (cnt2[b] || 0) + 1;
+        const k = key(e, cnt2[b]);
+        m[k] = e.value;
+        if (document.activeElement === e) foc = { k, s: e.selectionStart, en: e.selectionEnd };
+      });
+      return { m, foc };
+    };
+    const before = grab();
+    const r = fn();
+    const cnt = {};
+    root.querySelectorAll("input:not([type=checkbox]):not([type=range]),textarea,select").forEach((e) => {
+      const b = key(e, 0);
+      cnt[b] = (cnt[b] || 0) + 1;
+      const k = key(e, cnt[b]);
+      if (k in before.m && before.m[k] !== "" && e.value !== before.m[k]) e.value = before.m[k];
+      if (before.foc && before.foc.k === k) {
+        try {
+          e.focus({ preventScroll: true });
+          if (e.setSelectionRange && before.foc.s != null) e.setSelectionRange(before.foc.s, before.foc.en);
+        } catch (x) {
+        }
+      }
+    });
+    return r;
+  };
+  {
+    const r0 = refresh;
+    refresh = function() {
+      return keepIn(sh && sh.querySelector(".ab"), () => r0.apply(this, arguments));
+    };
+    const d0 = devRefresh;
+    devRefresh = function() {
+      return keepIn(dsh && dsh.querySelector(".ab"), () => d0.apply(this, arguments));
+    };
+  }
   admUI();
   devUI();
   window.SPZ_ADM = { DF, dfSave, isDev, TOK, playFx, FX, act, isAdm, isDev, sendGift, siteAct, BANS, ONL, freeze, openLogin, watchStart, DF, snapshot };
