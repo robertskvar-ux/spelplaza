@@ -3395,11 +3395,11 @@ function bboxGame(st, net) {
   function avatar(p) {
     if (avG[p.id]) return avG[p.id];
     const g = new V.Group();
-    const body = new V.Mesh(new V.CapsuleGeometry(0.32, 0.9, 4, 10), new V.MeshLambertMaterial({ color: new V.Color(net.pcol(p) || "#888888") }));
-    body.position.y = 0.8;
-    g.add(body);
-    const head = sprite(p.av || "🙂", 0.7);
-    head.position.y = 1.65;
+    const sd = makeSoldier({ variant: [...String(p.id)].reduce((a, c2) => a + c2.charCodeAt(0), 0) % 3, armband: new V.Color(net.pcol(p) || "#888888").getHex() });
+    g.add(sd.g);
+    const body = sd.torso;
+    const head = sprite(p.av || "🙂", 0.42);
+    head.position.y = 2;
     g.add(head);
     const nm = nameSprite(p.name || "");
     nm.position.y = 2.15;
@@ -3412,7 +3412,7 @@ function bboxGame(st, net) {
     emo.visible = false;
     g.add(emo);
     scene.add(g);
-    avG[p.id] = { g, body, hand, emo, hi: null, emT: 0 };
+    avG[p.id] = { g, body, sd, hand, emo, hi: null, emT: 0, ph: 0, lx: 0, lz: 0 };
     return avG[p.id];
   }
   const pn = (id) => SOLO ? "jou" : net.pname(id) || "iemand";
@@ -4831,8 +4831,15 @@ function bboxGame(st, net) {
       a.g.position.x += (q.x - a.g.position.x) * k;
       a.g.position.y += (q.y - a.g.position.y) * k;
       a.g.position.z += (q.z - a.g.position.z) * k;
-      a.g.rotation.y = q.r || 0;
+      a.g.rotation.y = (q.r || 0) + Math.PI;
       a.g.scale.setScalar(q.s || 1);
+      {
+        const sp = Math.hypot(a.g.position.x - a.lx, a.g.position.z - a.lz) / Math.max(dt, 1e-3);
+        a.lx = a.g.position.x;
+        a.lz = a.g.position.z;
+        a.ph += dt * Math.min(12, sp * 3);
+        if (typeof animateSoldier === "function") animateSoldier(a.sd, a.ph, Math.min(1, sp / 2));
+      }
       if (a.hi !== (q.it || "")) {
         a.hi = q.it || "";
         a.hand.clear();
@@ -14066,37 +14073,18 @@ const MP = [
       return tt;
     }
     function mkAv(p) {
-      const col = new THREE.Color(net.pcol(p)), tint2 = col.clone().lerp(new THREE.Color(16777215), 0.6), G2 = new THREE.Group(), M = (cl) => new THREE.MeshLambertMaterial({ color: cl }), body = M(col), dark = M(col.clone().multiplyScalar(0.45)), skin = M(tint2), top = M(col.clone().lerp(tint2, 0.4)), ht = headTex(p, tint2), face2 = new THREE.MeshBasicMaterial({ map: ht }), mats = [body, dark, skin, top, face2];
-      const part = (par, m, w, h, d, x, y, z) => {
-        const o = new THREE.Mesh(BOX, m);
-        o.scale.set(w, h, d);
-        o.position.set(x, y, z);
-        par.add(o);
-        return o;
-      }, piv = (x, y) => {
-        const q = new THREE.Group();
-        q.position.set(x, y, 0);
-        G2.add(q);
-        return q;
-      };
-      const lL = piv(-0.13, 0.75), lR = piv(0.13, 0.75), aL = piv(-0.37, 1.45), aR = piv(0.37, 1.45);
-      part(lL, dark, 0.25, 0.75, 0.27, 0, -0.375, 0);
-      part(lR, dark, 0.25, 0.75, 0.27, 0, -0.375, 0);
-      part(aL, body, 0.22, 0.72, 0.24, 0, -0.33, 0);
-      part(aR, body, 0.22, 0.72, 0.24, 0, -0.33, 0);
-      part(aL, skin, 0.2, 0.12, 0.22, 0, -0.72, 0);
-      part(aR, skin, 0.2, 0.12, 0.22, 0, -0.72, 0);
-      part(G2, body, 0.5, 0.72, 0.28, 0, 1.11, 0);
-      const head = new THREE.Mesh(BOX, [skin, skin, top, skin, skin, face2]);
-      head.scale.setScalar(0.52);
-      head.position.y = 1.74;
-      G2.add(head);
+      const col = new THREE.Color(net.pcol(p)), G2 = new THREE.Group();
+      const vi = [...String(p.id)].reduce((a, c2) => a + c2.charCodeAt(0), 0) % 3;
+      const sd = makeSoldier({ variant: vi, armband: col.getHex() });
+      G2.add(sd.g);
       const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tagTex(p), depthWrite: false }));
       tag.scale.set(1.7, 0.425, 1);
       tag.position.y = 2.32;
       G2.add(tag);
       SC.add(G2);
-      return { G: G2, lL, lR, aL, aR, head, tag, mats, ht, face: face2, x: 0, y: -99, z: 0, a: 0, tx: 0, ty: -99, tz: 0, ta: 0, tp: 0, ph: 0, id: p.id, nm: net.pname(p), av: p.av || "", bub: null, bubT: 0, bubS: "" };
+      const face2 = new THREE.MeshBasicMaterial(), ht = { dispose() {
+      } };
+      return { G: G2, lL: sd.legL, lR: sd.legR, aL: sd.armL, aR: sd.armR, head: sd.head, tag, mats: [face2], ht, face: face2, x: 0, y: -99, z: 0, a: 0, tx: 0, ty: -99, tz: 0, ta: 0, tp: 0, ph: 0, id: p.id, nm: net.pname(p), av: p.av || "", bub: null, bubT: 0, bubS: "" };
     }
     function avTarget(id, x, y, z, a, pt) {
       if (id === MYID) return;
