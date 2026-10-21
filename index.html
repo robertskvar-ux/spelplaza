@@ -74963,11 +74963,29 @@ html[data-spt="rustig"] .chips button,html[data-spt="rustig"] .mpbn,html[data-sp
       });
       lists.prepend(t);
     }
+    if (!lists.querySelector(":scope > .h2new") && typeof shelf === "function") {
+      const NEW = ["valrace", "paintball", "bommen", "keuken", "overleef", "maker", "stadspel", "golf3d", "bowling", "obby"];
+      const gs = NEW.map(gById).filter(Boolean);
+      if (gs.length) {
+        try {
+          const s = shelf("🆕 Nieuwste spellen", gs.map((g) => [g]));
+          s.querySelectorAll(".card .th").forEach((t) => {
+            const b = mk("span", "h2rec", "NIEUW");
+            b.style.cssText = "left:6px;right:auto;top:auto;bottom:6px;background:#e5484d;color:#fff";
+            t.append(b);
+          });
+          s.classList.add("h2new");
+          const tl = lists.querySelector(":scope > .h2tiles");
+          tl && tl.nextSibling ? lists.insertBefore(s, tl.nextSibling) : lists.prepend(s);
+        } catch (e) {
+        }
+      }
+    }
     if (!lists.querySelector(":scope > .h2cont") && typeof recent === "function" && typeof shelf === "function") {
       const r = recent().map(gById).filter(Boolean);
       if (r.length) {
         try {
-          const s = shelf("▶️ Verder spelen", r.map((g) => card(g)));
+          const s = shelf("▶️ Verder spelen", r.map((g) => [g]));
           s.classList.add("h2cont");
           const tl = lists.querySelector(":scope > .h2tiles");
           tl && tl.nextSibling ? lists.insertBefore(s, tl.nextSibling) : lists.append(s);
