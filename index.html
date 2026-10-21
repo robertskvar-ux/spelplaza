@@ -1689,6 +1689,1429 @@ function zombieGame(st, net) {
     T.dispose();
   };
 }
+function valraceGame(st, net) {
+  const SOLO = !!net.solo, HOST = net.isHost, ME = net.me.id, V = THREE;
+  const cssE = E("style");
+  cssE.textContent = ".vr-wrap{position:relative;max-width:960px;margin:0 auto;border-radius:14px;overflow:hidden;background:#000;touch-action:none;display:block}.vr-wrap canvas{width:100%!important;height:auto;display:block}.vr-hud{position:absolute;inset:0;pointer-events:none;color:#fff;font-weight:900;text-shadow:0 2px 4px #000}.vr-top{position:absolute;left:0;right:0;top:8px;text-align:center;font-size:20px}.vr-cnt{position:absolute;right:12px;top:10px;font-size:15px;background:#0008;border-radius:12px;padding:6px 10px;text-align:right;line-height:1.4}.vr-cnt:empty{display:none}.vr-rd{position:absolute;left:12px;top:10px;font-size:14px;background:#0008;border-radius:12px;padding:5px 10px}.vr-rd:empty{display:none}.vr-big{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:72px;text-align:center}.vr-card{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(440px,86%);background:linear-gradient(160deg,#ff5fa2,#7b4dff);border:4px solid #fff;border-radius:22px;padding:18px;text-align:center;display:none;box-shadow:0 10px 30px #0008}.vr-card h2{margin:0 0 6px;font-size:30px}.vr-card p{margin:6px 0;font-size:15px;font-weight:700;line-height:1.35}.vr-card .em{font-size:52px;line-height:1}.vr-msg{position:absolute;left:0;right:0;bottom:14px;text-align:center;font-size:17px;padding:0 10px}.vr-menu{position:absolute;inset:0;background:linear-gradient(160deg,#2a1450e8,#ff5fa2c0);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;pointer-events:auto;color:#fff;text-align:center;padding:20px}.vr-menu h2{margin:0;font-size:34px}.vr-menu .row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}.vr-menu button{font-size:16px;font-weight:900;border:0;border-radius:14px;padding:12px 16px;cursor:pointer;background:#fff;color:#2a1f5c;min-width:90px}.vr-menu button.on{background:#ffd84d}.vr-menu p{margin:0;opacity:.9;font-size:14px;max-width:440px}@media(max-width:640px){.vr-top{font-size:14px;top:6px}.vr-cnt{font-size:11px;top:30px;right:6px;padding:3px 7px}.vr-rd{font-size:11px;top:30px;left:6px;padding:3px 7px}.vr-msg{font-size:13px;bottom:8px}.vr-big{font-size:48px}.vr-card h2{font-size:22px}.vr-card p{font-size:12px}.vr-card .em{font-size:36px}.vr-card{padding:10px}}";
+  st.append(cssE);
+  const wrap = E("div", "wrap vr-wrap");
+  st.append(wrap);
+  const T = three(wrap, 960, 560, { fov: 65, far: 400 });
+  const { r: ren, s: scene, cam, c } = T;
+  const hud = E("div", "vr-hud");
+  hud.innerHTML = '<div class="vr-top" data-noi18n></div><div class="vr-rd" data-noi18n></div><div class="vr-cnt" data-noi18n></div><div class="vr-big"></div><div class="vr-card" data-noi18n></div><div class="vr-msg" data-noi18n></div>';
+  wrap.append(hud);
+  const $h = (s) => hud.querySelector(s);
+  st.append(E("div", "hint", "WASD / pijltjes = lopen · Spatie = springen · E = duiken (korte sprong vooruit) · sleep = camera draaien · scrollwiel = zoomen"));
+  let jumpPress = 0, divePress = 0;
+  const inp = input(st, [["◀", "a"], ["▲", "w"], ["▼", "s"], ["▶", "d"], ["⤒", " "], ["🤸", "e"]], (k) => {
+    if (k === " ") jumpPress = 1;
+    else if (k === "e" || k === "E") divePress = 1;
+  });
+  const K = (...a) => a.some((k) => inp.has(k) || inp.has(k.toUpperCase()));
+  const clearKeys = () => {
+    try {
+      inp.d.clear();
+    } catch (e) {
+    }
+    jumpPress = 0;
+    divePress = 0;
+  };
+  const onVis = () => {
+    if (document.hidden) clearKeys();
+  };
+  addEventListener("blur", clearKeys);
+  document.addEventListener("visibilitychange", onVis);
+  const esc2 = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
+  scene.background = new V.Color(12576511);
+  scene.fog = new V.Fog(12576511, 80, 260);
+  scene.add(new V.HemisphereLight(16777215, 11563168, 1.25));
+  const sun = new V.DirectionalLight(16773853, 1.15);
+  sun.position.set(30, 70, -25);
+  scene.add(sun);
+  const MC = {};
+  const mat = (col, o) => {
+    const k = col + "_" + JSON.stringify(o || 0);
+    return MC[k] || (MC[k] = new V.MeshLambertMaterial(Object.assign({ color: col }, o || {})));
+  };
+  const gooMat = new V.MeshLambertMaterial({ color: 16740304, emissive: 10494090, emissiveIntensity: 0.45 });
+  const goo = new V.Mesh(new V.PlaneGeometry(600, 600), gooMat);
+  goo.rotation.x = -Math.PI / 2;
+  scene.add(goo);
+  let W = null, EL = [], BARS = [], HEX = [], STEPS = [], crown = null, TT = {};
+  function clearWorld() {
+    if (W) {
+      scene.remove(W);
+      W.traverse((m) => {
+        if (m.geometry) m.geometry.dispose();
+      });
+    }
+    W = new V.Group();
+    scene.add(W);
+    EL = [];
+    BARS = [];
+    HEX = [];
+    STEPS = [];
+    crown = null;
+    TT = {};
+  }
+  function solid(o) {
+    o.hy = o.hy || 0.5;
+    o.yaw = o.yaw || 0;
+    o.bx = o.x;
+    o.by = o.y;
+    o.bz = o.z;
+    o.tilt = 0;
+    o.m = new V.Mesh(o.geo || new V.BoxGeometry(o.hx * 2, o.hy * 2, o.hz * 2), o.mt || mat(o.col || 10066329));
+    o.m.position.set(o.x, o.y - o.hy, o.z);
+    o.m.rotation.y = o.yaw;
+    W.add(o.m);
+    EL.push(o);
+    return o;
+  }
+  const plat = (x, y, z, w, d, col, ex) => solid(Object.assign({ t: "p", x, y, z, hx: w / 2, hz: d / 2, col }, ex || {}));
+  function hammer(x, y, z, len, w, ph) {
+    const g = new V.Group();
+    g.position.set(x, y + 0.65, z);
+    const cy = new V.Mesh(new V.CylinderGeometry(0.17, 0.17, len * 2, 10), mat(16767053));
+    cy.rotation.z = Math.PI / 2;
+    g.add(cy);
+    for (const s of [-1, 1]) {
+      const hd = new V.Mesh(new V.CylinderGeometry(0.42, 0.42, 0.9, 12), mat(16732027));
+      hd.position.x = s * len;
+      g.add(hd);
+    }
+    const pole = new V.Mesh(new V.CylinderGeometry(0.25, 0.3, 1.4, 10), mat(7032022));
+    pole.position.y = -0.1;
+    g.add(pole);
+    W.add(g);
+    BARS.push({ x, y, z, len, w, ph: ph || 0, g, a: 0 });
+  }
+  function sign(txt, x, y, z, col) {
+    const cv = document.createElement("canvas");
+    cv.width = 512;
+    cv.height = 128;
+    const g = cv.getContext("2d");
+    g.fillStyle = col;
+    g.beginPath();
+    g.roundRect(4, 4, 504, 120, 28);
+    g.fill();
+    g.fillStyle = "#fff";
+    g.font = "bold 58px system-ui";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText(txt, 256, 66);
+    const s = new V.Sprite(new V.SpriteMaterial({ map: new V.CanvasTexture(cv) }));
+    s.scale.set(7, 1.75, 1);
+    s.position.set(x, y, z);
+    W.add(s);
+  }
+  function crownMesh() {
+    const g = new V.Group();
+    const gold = new V.MeshLambertMaterial({ color: 16763955, emissive: 9067008, emissiveIntensity: 0.5 });
+    const ring = new V.Mesh(new V.CylinderGeometry(0.5, 0.45, 0.35, 14, 1, true), gold);
+    ring.material.side = V.DoubleSide;
+    g.add(ring);
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * Math.PI * 2;
+      const p = new V.Mesh(new V.ConeGeometry(0.12, 0.38, 5), gold);
+      p.position.set(Math.sin(a) * 0.47, 0.34, Math.cos(a) * 0.47);
+      g.add(p);
+      const gm = new V.Mesh(new V.SphereGeometry(0.07, 6, 4), mat([15026253, 3113197, 2864755][i % 3]));
+      gm.position.set(Math.sin(a) * 0.5, 0, Math.cos(a) * 0.5);
+      g.add(gm);
+    }
+    return g;
+  }
+  const FINZ = 87, CP1 = [[0, 3], [0, 33], [0, 56]];
+  function buildR1() {
+    scene.background.setHex(12576511);
+    scene.fog.color.setHex(12576511);
+    goo.position.y = -8;
+    plat(0, 0, 2, 16, 14, 16777215);
+    sign("🏁 Obstakelrace", 0, 5, 8, "#ff5fa2");
+    plat(0, 0, 20, 14, 22, 8115199);
+    hammer(0, 0, 14, 6.6, 1.3, 0);
+    hammer(0, 0, 21, 6.6, -1.2, 1.2);
+    hammer(0, 0, 28, 6.6, 1.5, 2.4);
+    plat(0, 0, 44, 14, 26, 16758861);
+    [[36, 1.2, 0], [42, -1.4, 1.7], [48, 1.3, 3.1], [54, -1.1, 4.4]].forEach(([z, w, ph]) => plat(0, 2.5, z, 6, 0.8, 16732027, { t: "move", hy: 1.25, ax: 4, ay: 0, az: 0, w, ph }));
+    [61, 67.5, 74, 80.5].forEach((z, i) => {
+      plat(0, 0, z, 10, 5, [10185727, 5691018][i % 2], { t: "see", hy: 0.25, A: 0.3, w: 1.25 + i * 0.15, ph: i * 1.7 });
+      const p = new V.Mesh(new V.CylinderGeometry(0.4, 0.6, 7, 8), mat(7032022));
+      p.position.set(0, -4, z);
+      W.add(p);
+    });
+    plat(0, 0, 90.25, 14, 11.5, 16777215);
+    const arch = new V.Group();
+    arch.position.set(0, 0, FINZ);
+    for (const s of [-1, 1]) {
+      const p = new V.Mesh(new V.BoxGeometry(0.6, 5, 0.6), mat(16736162));
+      p.position.set(s * 6.7, 2.5, 0);
+      arch.add(p);
+    }
+    const top = new V.Mesh(new V.BoxGeometry(14, 0.9, 0.6), mat(16767053));
+    top.position.y = 5;
+    arch.add(top);
+    W.add(arch);
+    sign("FINISH", 0, 7, FINZ, "#2bb673");
+    EL.forEach((o) => {
+      if (o.t === "p" && o.hz > 5) {
+        const p = new V.Mesh(new V.CylinderGeometry(0.6, 0.9, 8, 8), mat(7032022));
+        p.position.set(o.x, -5, o.z);
+        W.add(p);
+      }
+    });
+  }
+  const LAYERS = [0, -7, -14], HS = 1.2, R2KILL = -20;
+  const hexMats = [[mat(16736162), mat(8115199), mat(16767053)], mat(16777215)];
+  function buildR2() {
+    scene.background.setHex(2757712);
+    scene.fog.color.setHex(2757712);
+    goo.position.y = -24;
+    const geo = new V.CylinderGeometry(HS * 0.95, HS * 0.95, 0.5, 6);
+    LAYERS.forEach((y, li) => {
+      for (let q = -5; q <= 5; q++) for (let r = -5; r <= 5; r++) {
+        if (Math.abs(q + r) > 5) continue;
+        const x = HS * Math.sqrt(3) * (q + r / 2), z = HS * 1.5 * r;
+        const o = solid({ t: "hex", x, y, z, hx: HS, hz: HS, hy: 0.25, rad: HS * 0.9, geo, mt: hexMats[0][li], li, i: HEX.length });
+        o.base = o.m.material;
+        HEX.push(o);
+      }
+    });
+    HEX.forEach((o) => {
+      o.nb = HEX.filter((p) => p !== o && p.li === o.li && Math.hypot(p.x - o.x, p.z - o.z) < HS * 2.2);
+    });
+    sign("⬢ Valtegels", 0, 6, -9, "#7b4dff");
+  }
+  const AR = 16;
+  function buildR3() {
+    scene.background.setHex(16769960);
+    scene.fog.color.setHex(16769960);
+    goo.position.y = -8;
+    plat(0, 0, 0, AR * 2 + 2, AR * 2 + 2, 10216315);
+    for (const s of [-1, 1]) {
+      plat(s * (AR + 0.5), 1.5, 0, 1, AR * 2 + 2, 16736162, { hy: 2 });
+      plat(0, 1.5, s * (AR + 0.5), AR * 2 + 2, 1, 16736162, { hy: 2 });
+    }
+    [[-7, -7], [7, -7], [-7, 7], [7, 7]].forEach(([x, z]) => plat(x, 1.1, z, 3, 3, 16767053, { hy: 0.55 }));
+    plat(0, 0.6, 0, 5, 5, 8115199, { hy: 0.3 });
+    sign("🦊 Staartjesjacht", 0, 6, AR + 1, "#e8742c");
+  }
+  const TOPY = 15;
+  function buildR4() {
+    scene.background.setHex(16762600);
+    scene.fog.color.setHex(16762600);
+    goo.position.y = -8;
+    plat(0, 0, 0, 26, 26, 16777215);
+    plat(0, TOPY, 0, 7, 7, 8080895, { hy: TOPY / 2 });
+    for (let i = 0; i < 14; i++) {
+      const a = i * 0.5, R2 = 7.5, x = Math.sin(a) * R2, z = Math.cos(a) * R2, y = (i + 1) * 1;
+      const col = [16736162, 8115199, 16767053, 5691018][i % 4];
+      const mv = i === 4 || i === 9;
+      const o = plat(x, y, z, 3, 3, col, mv ? { t: "move", hy: 0.3, ax: 0, az: 0, ay: 0.9, w: 1.4, ph: i } : { hy: 0.3, yaw: a });
+      STEPS.push(o);
+      if (i === 6 || i === 11) hammer(x, y, z, 1.7, 2.1, i);
+    }
+    const ped = new V.Mesh(new V.CylinderGeometry(0.5, 0.7, 0.6, 10), mat(16767053));
+    ped.position.set(0, TOPY + 0.3, 0);
+    W.add(ped);
+    crown = crownMesh();
+    crown.position.set(0, TOPY + 1.4, 0);
+    W.add(crown);
+    sign("👑 Kroonklim", 0, TOPY + 4, 0, "#ff5fa2");
+  }
+  function buildRound(rd) {
+    clearWorld();
+    [null, buildR1, buildR2, buildR3, buildR4][rd]();
+  }
+  function updEl(gt) {
+    for (const o of EL) {
+      if (o.t === "move") {
+        const s = Math.sin(gt * o.w + o.ph);
+        o.x = o.bx + o.ax * s;
+        o.y = o.by + o.ay * s;
+        o.z = o.bz + o.az * s;
+        o.m.position.set(o.x, o.y - o.hy, o.z);
+      } else if (o.t === "see") {
+        o.tilt = o.A * Math.sin(gt * o.w + o.ph);
+        o.m.rotation.z = o.tilt;
+      }
+    }
+    for (const b of BARS) {
+      b.a = gt * b.w + b.ph;
+      b.g.rotation.y = b.a;
+    }
+    for (const o of HEX) {
+      const t = TT[o.i];
+      if (t == null) {
+        if (o.off) {
+          o.off = false;
+          o.m.visible = true;
+        }
+        o.m.material = o.base;
+        o.m.position.set(o.x, o.y - o.hy, o.z);
+        continue;
+      }
+      const k = gt - t;
+      if (k < 0.7) {
+        o.off = false;
+        o.m.material = hexMats[1];
+        o.m.position.set(o.x + (Math.random() - 0.5) * 0.08, o.y - o.hy, o.z);
+      } else {
+        o.off = true;
+        const f = k - 0.7;
+        o.m.position.y = o.y - o.hy - f * f * 9;
+        o.m.visible = f < 1.6;
+      }
+    }
+    if (crown) {
+      crown.rotation.y = gt * 1.5;
+      crown.position.y = TOPY + 1.4 + Math.sin(gt * 2.5) * 0.15;
+    }
+  }
+  const R_ = 0.33, HGT = 1.75;
+  const toLocal = (o, x, z) => {
+    const dx = x - o.x, dz = z - o.z, cs = Math.cos(o.yaw), sn = Math.sin(o.yaw);
+    return [dx * cs - dz * sn, dx * sn + dz * cs];
+  };
+  const toWorld = (o, lx, lz) => {
+    const cs = Math.cos(o.yaw), sn = Math.sin(o.yaw);
+    return [o.x + lx * cs + lz * sn, o.z - lx * sn + lz * cs];
+  };
+  function topAt(o, x, z, inf) {
+    if (o.off) return null;
+    if (o.t === "hex") {
+      const dx = x - o.x, dz = z - o.z, rr = o.rad + inf;
+      return dx * dx + dz * dz < rr * rr ? o.y : null;
+    }
+    const [lx, lz] = toLocal(o, x, z);
+    if (Math.abs(lx) > o.hx + inf || Math.abs(lz) > o.hz + inf) return null;
+    if (o.t === "see") return o.y + Math.max(-o.hx, Math.min(o.hx, lx)) * Math.tan(o.tilt);
+    return o.y;
+  }
+  function support(x, z, maxY) {
+    let best2 = null;
+    for (const o of EL) {
+      if (o.y - 2 > maxY) continue;
+      const t = topAt(o, x, z, 0.12);
+      if (t != null && t <= maxY && (!best2 || t > best2.t)) best2 = { t, o };
+    }
+    return best2;
+  }
+  function pushOut(p) {
+    for (const o of EL) {
+      if (o.off || o.t === "hex" || o.t === "see") continue;
+      const top = o.y, bot = o.y - o.hy * 2;
+      if (p.y >= top - 0.32 || p.y + HGT <= bot) continue;
+      const [lx, lz] = toLocal(o, p.x, p.z);
+      const ox = o.hx + R_ - Math.abs(lx), oz = o.hz + R_ - Math.abs(lz);
+      if (ox <= 0 || oz <= 0) continue;
+      let nx = lx, nz = lz;
+      if (ox < oz) nx = lx + (lx < 0 ? -ox : ox);
+      else nz = lz + (lz < 0 ? -oz : oz);
+      const w = toWorld(o, nx, nz);
+      p.x = w[0];
+      p.z = w[1];
+    }
+  }
+  const nameTag = (t) => {
+    const cv = document.createElement("canvas");
+    cv.width = 256;
+    cv.height = 64;
+    const x = cv.getContext("2d");
+    x.font = "bold 30px system-ui";
+    x.textAlign = "center";
+    x.textBaseline = "middle";
+    const w = Math.min(250, x.measureText(t).width + 24);
+    x.fillStyle = "rgba(0,0,0,.55)";
+    x.beginPath();
+    x.roundRect(128 - w / 2, 8, w, 48, 20);
+    x.fill();
+    x.fillStyle = "#fff";
+    x.fillText(t, 128, 33);
+    const s = new V.Sprite(new V.SpriteMaterial({ map: new V.CanvasTexture(cv), transparent: true, depthWrite: false }));
+    s.scale.set(1.8, 0.45, 1);
+    s.position.y = 2.3;
+    return s;
+  };
+  const BOTCOL = ["#ff5fa2", "#ffd84d", "#56d68a", "#7bd3ff", "#9b6bff", "#ff8a3c", "#2bd4c4", "#e5484d", "#c0e34d", "#f07bff", "#5b8cff"];
+  const BOTN = ["Spekkie", "Dropje", "Toffie", "Zuurtje", "Lolly", "Muntje", "Nougat", "Praline", "Gummy", "Snoepie", "Marsepein"];
+  const PL = {};
+  let ROS = [];
+  function addP(id, name, isBot, i) {
+    if (PL[id]) return PL[id];
+    const p = (net.players || []).find((q) => q.id === id) || { id, name };
+    let col = BOTCOL[i % BOTCOL.length];
+    if (!isBot) try {
+      col = net.pcol(p) || col;
+    } catch (e) {
+    }
+    const sd = makeSoldier({ variant: i % 3, armband: new V.Color(col).getHex(), lk: p.lk, me: id === ME });
+    const root = new V.Group();
+    const bod = new V.Group();
+    bod.add(sd.g);
+    root.add(bod);
+    const tag = nameTag(name || "?");
+    root.add(tag);
+    const tail = new V.Group();
+    const tc = new V.Mesh(new V.ConeGeometry(0.17, 0.75, 8), mat(16747052));
+    tc.rotation.x = -Math.PI / 2;
+    tc.position.z = -0.35;
+    tail.add(tc);
+    const tt2 = new V.Mesh(new V.SphereGeometry(0.13, 8, 6), mat(16777215));
+    tt2.position.z = -0.72;
+    tail.add(tt2);
+    tail.position.set(0, 0.98, -0.14);
+    tail.rotation.x = 0.5;
+    bod.add(tail);
+    tail.visible = false;
+    scene.add(root);
+    root.visible = false;
+    const o = {
+      id,
+      name: name || "?",
+      bot: !!isBot,
+      root,
+      bod,
+      sd,
+      tag,
+      tail,
+      x: 0,
+      y: 0,
+      z: 0,
+      r: 0,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      gr: null,
+      gl: null,
+      coy: 0,
+      buf: 0,
+      cut: false,
+      stun: 0,
+      dvT: 0,
+      dvCd: 0,
+      sq: 0,
+      mv: 0,
+      air: 0,
+      ph: 0,
+      tx: 0,
+      ty: 0,
+      tz: 0,
+      tr: 0,
+      td: 0,
+      ctl: { wx: 0, wz: 0, jp: 0, jh: 0, dv: 0 },
+      ai: {},
+      cp: 0,
+      fin: 0,
+      out: 0,
+      on: false
+    };
+    PL[id] = o;
+    return o;
+  }
+  function initRoster(nBots) {
+    ROS = [];
+    const ps = SOLO ? [net.me] : net.players;
+    ps.forEach((p) => ROS.push([p.id, p.name || "?", SOLO ? 0 : net.isBot(p.id) ? 1 : 0]));
+    let k = 0;
+    const want = SOLO ? 1 + nBots : Math.max(8, ROS.length);
+    while (ROS.length < want && ROS.length < 12) {
+      ROS.push(["vb" + k, "🤖 " + BOTN[k % BOTN.length], 1]);
+      k++;
+    }
+    ROS.forEach((r, i) => addP(r[0], r[1], r[2], i));
+  }
+  const isBotId = (id) => {
+    const o = PL[id];
+    return o ? o.bot : false;
+  };
+  const RN = ["", "Obstakelrace", "Valtegels", "Staartjesjacht", "Kroonklim"], RE = ["", "🏁", "⬢", "🦊", "👑"], LIM = [0, 120, 100, 60, 150];
+  const G2 = { rd: 0, ph: "menu", al: [], dn: [], ou: [], tl: [], w: null, qq: [], qN: 0, sv: {}, resT: 0 };
+  let t0 = performance.now();
+  const clk = () => (performance.now() - t0) / 1e3;
+  const IM = {};
+  const act = (id) => G2.al.includes(id) && !(G2.rd === 2 && G2.ou.includes(id));
+  const RUN = 8, ACC_G = 80, ACC_A = 32, DEC_A = 14, GR = 32, JV = 11.6, COY = 0.12, BUF = 0.15;
+  let meB = null;
+  function stepBody(b, dt) {
+    if (b.stun > 0) b.stun -= dt;
+    if (b.dvCd > 0) b.dvCd -= dt;
+    const c2 = b.ctl;
+    if (b.gr && b.gl && b.gl.o === b.gr && b.gr.t === "move") {
+      const w = toWorld(b.gr, b.gl.lx, b.gl.lz);
+      b.x = w[0];
+      b.z = w[1];
+    }
+    const onG = !!b.gr, ctrl = b.stun <= 0 && b.dvT <= 0;
+    const mag = Math.min(1, Math.hypot(c2.wx, c2.wz));
+    let tx = 0, tz = 0, acc;
+    if (ctrl) {
+      tx = c2.wx * RUN;
+      tz = c2.wz * RUN;
+      acc = onG ? ACC_G : mag > 0.05 ? ACC_A : DEC_A;
+    } else acc = onG ? b.dvT > 0 ? 6 : 18 : 1.5;
+    const dvx = tx - b.vx, dvz = tz - b.vz, dl = Math.hypot(dvx, dvz), mx = acc * dt;
+    if (dl <= mx) {
+      b.vx = tx;
+      b.vz = tz;
+    } else {
+      b.vx += dvx / dl * mx;
+      b.vz += dvz / dl * mx;
+    }
+    if (ctrl && mag > 0.05) b.r = Math.atan2(c2.wx, c2.wz);
+    if (c2.jp) {
+      c2.jp = 0;
+      if (ctrl) b.buf = BUF;
+    } else if (b.buf > 0) b.buf -= dt;
+    if (onG) b.coy = COY;
+    else if (b.coy > 0) b.coy -= dt;
+    if (b.buf > 0 && ctrl && (onG || b.coy > 0)) {
+      b.vy = JV;
+      b.buf = 0;
+      b.coy = 0;
+      b.gr = null;
+      b.cut = true;
+      if (b === meB) beep(520, 0.06, "square", 0.03);
+    }
+    if (b.cut && b.vy > 0 && !c2.jh) {
+      b.vy = Math.min(b.vy, JV * 0.45);
+      b.cut = false;
+    }
+    if (c2.dv) {
+      c2.dv = 0;
+      if (b.dvT <= 0 && b.dvCd <= 0 && b.stun <= 0) {
+        b.dvT = 0.6;
+        b.dvCd = 1.2;
+        b.vx = Math.sin(b.r) * 12.5;
+        b.vz = Math.cos(b.r) * 12.5;
+        b.vy = onG ? 5.5 : Math.max(b.vy, 3);
+        b.gr = null;
+        b.cut = false;
+        if (b === meB) beep(300, 0.1, "triangle", 0.04);
+      }
+    }
+    if (b.dvT > 0) {
+      b.dvT -= dt;
+      if (b.dvT <= 0 && b.gr) b.stun = 0.25;
+    }
+    if (!b.gr || b.vy > 0) b.vy = Math.max(-40, b.vy - GR * dt);
+    const sx = b.gr && b.gr.t === "see" ? -Math.sin(b.gr.tilt) * 5 : 0;
+    const prevY = b.y, vyB = b.vy;
+    b.x += (b.vx + sx) * dt;
+    b.z += b.vz * dt;
+    pushOut(b);
+    b.y += b.vy * dt;
+    const s = support(b.x, b.z, Math.max(prevY, b.y) + (onG ? 0.35 : 0.06));
+    if (s && b.vy <= 0 && b.y <= s.t + (onG ? 0.35 : 0)) {
+      const land = !onG;
+      b.y = s.t;
+      b.vy = 0;
+      b.gr = s.o;
+      b.cut = false;
+      const l = toLocal(s.o, b.x, b.z);
+      b.gl = { o: s.o, lx: l[0], lz: l[1] };
+      if (land) {
+        b.sq = Math.min(0.45, 0.12 + Math.max(0, -vyB) * 0.02);
+        if (b.dvT > 0) {
+          b.dvT = 0;
+          b.stun = 0.3;
+        }
+      }
+    } else b.gr = null;
+    if (b.stun <= 0.2) for (const h of BARS) {
+      if (b.y > h.y + 0.95 || b.y + HGT < h.y + 0.35) continue;
+      const ex = Math.cos(h.a) * h.len, ez = -Math.sin(h.a) * h.len, qx = b.x - h.x, qz = b.z - h.z;
+      const t = Math.max(-1, Math.min(1, (qx * ex + qz * ez) / (h.len * h.len)));
+      const cx = ex * t, cz = ez * t;
+      if (Math.hypot(qx - cx, qz - cz) < R_ + 0.35) {
+        let kx = cz * Math.sign(h.w), kz = -cx * Math.sign(h.w);
+        const kl = Math.hypot(kx, kz) || 1;
+        b.vx = kx / kl * 13;
+        b.vz = kz / kl * 13;
+        b.vy = 7;
+        b.gr = null;
+        b.stun = 0.55;
+        b.dvT = 0;
+        b.cut = false;
+        if (b === meB) {
+          beep(140, 0.15, "square", 0.05);
+          flash("💥 Boem! Geraakt door de hamer");
+        }
+      }
+    }
+    b.mv = b.gr && Math.hypot(b.vx, b.vz) > 0.8 ? 1 : 0;
+    b.air = b.gr ? 0 : 1;
+  }
+  function separate(b) {
+    for (const id in PL) {
+      const o = PL[id];
+      if (o === b || !o.on || !act(id)) continue;
+      if (Math.abs(b.y - o.y) > 1.5) continue;
+      const dx = b.x - o.x, dz = b.z - o.z, d = Math.hypot(dx, dz);
+      if (d < 0.62 && d > 1e-4) {
+        const p = (0.62 - d) * 0.6;
+        b.x += dx / d * p;
+        b.z += dz / d * p;
+      }
+    }
+  }
+  function resetBody(b, x, y, z, r) {
+    Object.assign(b, { x, y, z, r, vx: 0, vy: 0, vz: 0, gr: null, gl: null, stun: 0, dvT: 0, dvCd: 0, buf: 0, coy: 0, tx: x, ty: y, tz: z, tr: r, mv: 0, air: 0 });
+    b.ctl.jp = b.ctl.dv = 0;
+  }
+  function respawnBody(b) {
+    if (G2.rd === 1) {
+      const p = CP1[b.cp] || CP1[0];
+      resetBody(b, p[0] + (Math.random() - 0.5) * 6, 0.05, p[1], 0);
+    } else if (G2.rd === 4) {
+      const a = -0.9 + Math.random() * 0.6;
+      resetBody(b, Math.sin(a) * 10, 0.05, Math.cos(a) * 10, a + Math.PI / 2);
+    }
+    if (b === meB) {
+      flash("💦 In de gelei gevallen!");
+      beep(180, 0.25, "sawtooth", 0.05);
+      if (G2.rd === 1) yaw = 0;
+    }
+  }
+  function spawnPos(rd, i, n) {
+    if (rd === 1) return [-5 + i % 6 * 2, 0.05, 2 - Math.floor(i / 6) * 2.2, 0];
+    if (rd === 2) {
+      const a2 = i / n * Math.PI * 2;
+      return [Math.sin(a2) * 3.6, 0.05, Math.cos(a2) * 3.6, a2 + Math.PI];
+    }
+    if (rd === 3) {
+      const a2 = i / n * Math.PI * 2;
+      return [Math.sin(a2) * 9, 0.05, Math.cos(a2) * 9, a2 + Math.PI];
+    }
+    const a = -1.2 + i * 0.14;
+    return [Math.sin(a) * 10.5, 0.05, Math.cos(a) * 10.5, a + Math.PI / 2];
+  }
+  function placeAll() {
+    Object.values(PL).forEach((o) => {
+      o.on = false;
+      o.fin = 0;
+      o.out = 0;
+      o.cp = 0;
+      o.ai = {};
+    });
+    G2.al.forEach((id, i) => {
+      const o = PL[id];
+      if (!o) return;
+      o.on = true;
+      const s = spawnPos(G2.rd, i, G2.al.length);
+      resetBody(o, s[0], s[1], s[2], s[3]);
+    });
+    if (meB && act(ME)) yaw = meB.r;
+    pitch = G2.rd === 3 ? 0.7 : G2.rd === 2 ? 0.55 : 0.38;
+    clearKeys();
+  }
+  function checks(b) {
+    if (G2.rd === 1) {
+      if (b.z > 31.5) b.cp = Math.max(b.cp, 1);
+      if (b.z > 57.5) b.cp = Math.max(b.cp, 2);
+      if (b.y < -6) {
+        respawnBody(b);
+        return null;
+      }
+      if (!b.fin && b.z > FINZ && b.y > -1) {
+        b.fin = 1;
+        return "fin";
+      }
+    } else if (G2.rd === 2) {
+      if (!b.out && b.y < R2KILL) {
+        b.out = 1;
+        return "out";
+      }
+      if (b.gr && b.gr.t === "hex" && TT[b.gr.i] == null) return "tile";
+    } else if (G2.rd === 3) {
+      if (b.y < -4) resetBody(b, 0, 0.7, 0, 0);
+    } else if (G2.rd === 4) {
+      if (b.y < -5) {
+        respawnBody(b);
+        return null;
+      }
+      if (crown && Math.hypot(b.x, b.z) < 1.4 && b.y > TOPY - 0.4) return "crown";
+    }
+    return null;
+  }
+  const qFor = (n) => Math.max(1, Math.min(n - 1, Math.ceil(n * 0.6)));
+  function stMsg() {
+    return { k: "st", rd: G2.rd, ph: G2.ph, el: +clk().toFixed(2), al: G2.al, dn: G2.dn, ou: G2.ou, tl: G2.tl, w: G2.w, qq: G2.qq, qN: G2.qN, ros: ROS, tt: Object.keys(TT).map((i) => [+i, +TT[i].toFixed(2)]) };
+  }
+  function push() {
+    if (!SOLO) net.send(stMsg());
+  }
+  function startRound(rd, al) {
+    Object.assign(G2, { rd, al: al.slice(), dn: [], ou: [], tl: [], w: null, qq: [], qN: qFor(al.length), ph: "intro" });
+    buildRound(rd);
+    if (rd === 3) {
+      const sh = al.slice().sort(() => Math.random() - 0.5);
+      G2.tl = sh.slice(0, G2.qN);
+    }
+    if (rd === 4) G2.qN = 1;
+    t0 = performance.now() + 7e3;
+    placeAll();
+    lastPh = "";
+    push();
+  }
+  function hostEvent(id, e, i) {
+    const b = PL[id];
+    if (!b || !G2.al.includes(id) || G2.ph !== "play") return;
+    if (e === "fin" && G2.rd === 1 && !G2.dn.includes(id)) {
+      b.fin = 1;
+      G2.dn.push(id);
+      push();
+    } else if (e === "out" && G2.rd === 2 && !G2.ou.includes(id)) {
+      b.out = 1;
+      G2.ou.push(id);
+      push();
+    } else if (e === "tile" && G2.rd === 2 && HEX[i] && TT[i] == null) TT[i] = clk();
+    else if (e === "crown" && G2.rd === 4 && !G2.w) {
+      G2.w = id;
+      endRound();
+    }
+  }
+  function endRound() {
+    if (G2.ph !== "play") return;
+    let q;
+    if (G2.rd === 1) {
+      q = G2.dn.slice();
+      if (q.length < G2.qN) {
+        const rest = G2.al.filter((id) => !q.includes(id)).sort((a, b) => PL[b].z - PL[a].z);
+        q = q.concat(rest.slice(0, G2.qN - q.length));
+      }
+      q = q.slice(0, G2.qN);
+    } else if (G2.rd === 2) q = G2.al.filter((id) => !G2.ou.includes(id));
+    else if (G2.rd === 3) q = G2.tl.slice();
+    else {
+      if (!G2.w) G2.w = G2.al.slice().sort((a, b) => PL[b].y - PL[a].y)[0];
+      q = [G2.w];
+    }
+    q.forEach((id) => G2.sv[id] = (G2.sv[id] || 0) + 1);
+    G2.qq = q;
+    G2.ph = "res";
+    G2.resT = 4.5;
+    push();
+  }
+  function nextRound() {
+    const q = G2.qq;
+    if (G2.rd === 4 || q.length <= 1 || SOLO && !q.includes(ME)) {
+      finishShow(q.length === 1 ? q[0] : G2.rd === 4 ? G2.w : null);
+      return;
+    }
+    startRound(G2.rd + 1, q);
+  }
+  function finishShow(w) {
+    const sc = {};
+    ROS.forEach((r) => sc[r[0]] = (G2.sv[r[0]] || 0) * 100 + (r[0] === w ? 700 : 0));
+    const nm = w && PL[w] ? PL[w].name : null;
+    const title = nm ? "👑 " + nm + " wint Val Race!" : "Val Race is voorbij";
+    const text = ROS.slice().sort((a, b) => sc[b[0]] - sc[a[0]]).map((r, i) => i + 1 + ". " + r[1] + " · " + sc[r[0]]).join("  ");
+    const m = { k: "end", w, sc, title, text, rd: G2.rd };
+    if (!SOLO) net.send(m);
+    onEnd(m);
+  }
+  let ended = false;
+  function onEnd(m) {
+    if (ended) return;
+    ended = true;
+    G2.ph = "end";
+    G2.w = m.w;
+    const wb = PL[m.w];
+    if (wb) {
+      const cr = crownMesh();
+      cr.scale.setScalar(0.55);
+      cr.position.y = 0.42;
+      wb.sd.head.add(cr);
+      wb.on = true;
+    }
+    showCard(wb ? '<div class="em">👑</div><h2>' + esc2(wb.name) + " wint!</h2><p>" + (m.w === ME ? "Jij bent de kampioen van Val Race! 🎉" : "De kroon is voor " + esc2(wb.name) + ".") + "</p>" : '<div class="em">📺</div><h2>Einde van de show</h2>');
+    if (m.w === ME) try {
+      confetti(wrap, 120);
+    } catch (e) {
+    }
+    beep(1046, 0.3, "triangle", 0.06);
+    if (SOLO) {
+      const pts = m.sc[ME] || 0;
+      let rec = pts;
+      try {
+        rec = best("valrace", pts);
+      } catch (e) {
+      }
+      const won = m.w === ME, rdOut = m.rd;
+      const html = '<div style="font-size:42px">' + (won ? "👑" : "😵") + "</div><div>" + (won ? "Jij wint Val Race!" : "Uitgeschakeld in ronde " + rdOut + " · " + RN[rdOut]) + '</div><div style="font-size:16px;opacity:.85">' + (G2.sv[ME] || 0) + " ronde(s) overleefd</div><div>Punten: " + pts + "</div><div>Beste: " + rec + "</div>";
+      setTimeout(() => {
+        if (alive) overlay(st, c, html);
+      }, 2600);
+    } else setTimeout(() => {
+      try {
+        net.result({ winner: m.w, scores: m.sc, unit: " pt", title: m.title, text: m.text });
+      } catch (e) {
+      }
+    }, 2600);
+  }
+  function gapAhead(b, dx, dz, d) {
+    const s = support(b.x + dx * d, b.z + dz * d, b.y + 0.6);
+    return !s || s.t < b.y - 1;
+  }
+  function nearHammer(b) {
+    for (const h of BARS) {
+      if (Math.abs(b.y - h.y) > 1.2) continue;
+      const fa = h.a + h.w * 0.22;
+      const ex = Math.cos(fa) * h.len, ez = -Math.sin(fa) * h.len, qx = b.x - h.x, qz = b.z - h.z;
+      const t = Math.max(-1, Math.min(1, (qx * ex + qz * ez) / (h.len * h.len)));
+      if (Math.hypot(qx - ex * t, qz - ez * t) < 0.9) return true;
+    }
+    return false;
+  }
+  function steer(b, tx, tz, sp) {
+    const dx = tx - b.x, dz = tz - b.z, l = Math.hypot(dx, dz);
+    if (l < 0.15) {
+      b.ctl.wx = b.ctl.wz = 0;
+      return 0;
+    }
+    b.ctl.wx = dx / l * sp;
+    b.ctl.wz = dz / l * sp;
+    return l;
+  }
+  function botAI(b, dt) {
+    const a = b.ai, c2 = b.ctl;
+    if (a.sk == null) {
+      a.sk = 0.72 + Math.random() * 0.26;
+      a.lane = (Math.random() - 0.5) * 9;
+      a.lx = b.x;
+      a.lz = b.z;
+      a.stT = 0;
+      a.i = 0;
+      a.rt = 0;
+    }
+    c2.jh = 1;
+    let wantJ = false;
+    const onG = !!b.gr;
+    if (G2.rd === 1) {
+      if (b.fin) {
+        c2.wx = c2.wz = 0;
+        return;
+      }
+      let lane = a.lane;
+      if (b.z > 57 && b.z < 84) lane = a.lane * 0.25;
+      if (b.z > 31 && b.z < 57) lane = a.lane * 0.6;
+      steer(b, lane, b.z + 6, a.sk);
+      if (onG && gapAhead(b, c2.wx, c2.wz, 1.2)) wantJ = true;
+      if (onG && nearHammer(b) && Math.random() < 0.5 + 0.45 * a.sk) wantJ = true;
+    } else if (G2.rd === 2) {
+      a.rt -= dt;
+      const tg = a.tg;
+      if (a.rt <= 0 || !tg || tg.off || TT[tg.i] != null && Math.hypot(tg.x - b.x, tg.z - b.z) < 0.6) {
+        a.rt = 0.3 + Math.random() * 0.4;
+        a.tg = pickTile(b);
+      }
+      if (a.tg) {
+        const l = steer(b, a.tg.x, a.tg.z, a.sk * 0.8);
+        if (onG && l > 1.4 && gapAhead(b, c2.wx, c2.wz, 1)) wantJ = true;
+      } else {
+        c2.wx = Math.sin(a.lane);
+        c2.wz = Math.cos(a.lane);
+        a.lane += dt;
+      }
+    } else if (G2.rd === 3) {
+      const has = G2.tl.includes(b.id);
+      let best2 = null, bd = 1e9;
+      for (const id of G2.al) {
+        if (id === b.id) continue;
+        const o = PL[id];
+        if (!o || G2.tl.includes(id) === has) continue;
+        const d = Math.hypot(o.x - b.x, o.z - b.z);
+        if (d < bd) {
+          bd = d;
+          best2 = o;
+        }
+      }
+      if (has) {
+        if (best2 && bd < 9) {
+          let fx = b.x - best2.x, fz = b.z - best2.z;
+          const l = Math.hypot(fx, fz) || 1;
+          fx /= l;
+          fz /= l;
+          const side = Math.sin(performance.now() / 700 + a.lane);
+          fx += -fz * side * 0.6;
+          fz += fx * side * 0.6;
+          if (Math.abs(b.x) > AR - 4) fx -= Math.sign(b.x) * 1.4;
+          if (Math.abs(b.z) > AR - 4) fz -= Math.sign(b.z) * 1.4;
+          const l2 = Math.hypot(fx, fz) || 1;
+          c2.wx = fx / l2 * a.sk;
+          c2.wz = fz / l2 * a.sk;
+          if (bd < 2.2 && onG && Math.random() < dt * 3) wantJ = true;
+        } else {
+          a.rt -= dt;
+          if (a.rt <= 0 || !a.wt) {
+            a.rt = 2;
+            a.wt = [(Math.random() - 0.5) * 20, (Math.random() - 0.5) * 20];
+          }
+          steer(b, a.wt[0], a.wt[1], 0.6);
+        }
+      } else if (best2) {
+        const tx = best2.x - Math.sin(best2.r) * 0.9, tz = best2.z - Math.cos(best2.r) * 0.9;
+        const l = steer(b, tx, tz, a.sk);
+        if (bd < 3.2 && Math.random() < dt * 2.5 * a.sk) c2.dv = 1;
+      }
+    } else if (G2.rd === 4) {
+      const wp = a.i < STEPS.length ? STEPS[a.i] : null;
+      if (b.gr) {
+        const k = STEPS.indexOf(b.gr);
+        if (k >= 0 && k >= a.i) a.i = k + 1;
+        else if (k >= 0 && k < a.i - 1) a.i = k + 1;
+        else if (k < 0 && b.y < 0.5) a.i = 0;
+      }
+      if (a.ox == null || a.oi !== a.i) {
+        a.oi = a.i;
+        a.ox = (Math.random() - 0.5) * 1.2 * (1.1 - a.sk);
+        a.oz = (Math.random() - 0.5) * 1.2 * (1.1 - a.sk);
+      }
+      if (wp) {
+        const l = steer(b, wp.x + a.ox, wp.z + a.oz, a.sk);
+        if (onG && (wp.y > b.y + 0.3 && l < 3.3 || gapAhead(b, c2.wx, c2.wz, 1.1))) wantJ = true;
+        if (onG && nearHammer(b) && Math.random() < 0.4) wantJ = true;
+      } else {
+        const l = steer(b, 0, 0, a.sk);
+        if (onG && b.y < TOPY - 0.2 && (l < 6.4 || gapAhead(b, c2.wx, c2.wz, 1.1))) wantJ = true;
+      }
+    }
+    a.stT += dt;
+    if (a.stT > 1.2) {
+      const mvd = Math.hypot(b.x - a.lx, b.z - a.lz);
+      if (mvd < 0.6 && Math.hypot(c2.wx, c2.wz) > 0.3) {
+        wantJ = true;
+        a.lane = (Math.random() - 0.5) * 9;
+      }
+      a.stT = 0;
+      a.lx = b.x;
+      a.lz = b.z;
+    }
+    if (wantJ && onG) c2.jp = 1;
+  }
+  function pickTile(b) {
+    let li = 0;
+    for (let k = 0; k < 3; k++) if (b.y < LAYERS[k] + 1.2) li = k;
+    const cand = HEX.filter((o) => o.li === li && !o.off && TT[o.i] == null);
+    if (!cand.length) return null;
+    let best2 = null, bs = -1e9;
+    for (const o of cand) {
+      const d = Math.hypot(o.x - b.x, o.z - b.z);
+      if (d > 5.5) continue;
+      let s = o.nb.filter((n) => !n.off && TT[n.i] == null).length - d * 0.25 + Math.random() * 2.2;
+      if (d < 1) s -= 3;
+      for (const id of G2.al) {
+        const p = PL[id];
+        if (p !== b && p.on && Math.hypot(p.x - o.x, p.z - o.z) < 1.6) s -= 1.5;
+      }
+      if (Math.random() < 0.08 * (1 - b.ai.sk)) s += 6;
+      if (s > bs) {
+        bs = s;
+        best2 = o;
+      }
+    }
+    if (!best2) {
+      let bd = 1e9;
+      for (const o of cand) {
+        const d = Math.hypot(o.x - b.x, o.z - b.z);
+        if (d < bd) {
+          bd = d;
+          best2 = o;
+        }
+      }
+    }
+    return best2;
+  }
+  function tailCheck() {
+    const gt = clk();
+    for (const id of G2.al) {
+      if (G2.tl.includes(id)) continue;
+      const a = PL[id];
+      if (!a) continue;
+      for (const hid of G2.tl) {
+        const h = PL[hid];
+        if (!h || (IM[hid] || 0) > gt) continue;
+        const dx = a.x - h.x, dz = a.z - h.z, d = Math.hypot(dx, dz);
+        if (d > 1.35 || Math.abs(a.y - h.y) > 1.3) continue;
+        const dot = (dx * Math.sin(h.r) + dz * Math.cos(h.r)) / (d || 1);
+        if (dot < 0.35) {
+          G2.tl = G2.tl.filter((x) => x !== hid);
+          G2.tl.push(id);
+          IM[id] = gt + 1.5;
+          const m = { k: "tail", a: id, h: hid };
+          if (!SOLO) net.send(m);
+          onTail(m);
+          push();
+          break;
+        }
+      }
+    }
+  }
+  function onTail(m) {
+    const a = PL[m.a], h = PL[m.h];
+    if (!a || !h) return;
+    if (m.a === ME) {
+      flash("🦊 Staart gepakt van " + h.name + "!");
+      beep(880, 0.12, "triangle", 0.05);
+      beep(1175, 0.15, "triangle", 0.05);
+    } else if (m.h === ME) {
+      flash("😱 " + a.name + " pakte je staart! Pak er een terug");
+      beep(200, 0.2, "square", 0.05);
+    }
+  }
+  let offN = () => {
+  }, sendT = 0, stT = 0, botT = 0;
+  if (!SOLO) {
+    offN = net.on((d, from) => {
+      if (!d) return;
+      if (d.k === "p") {
+        if (HOST) {
+          d.id = from;
+          net.send(d);
+        }
+        const o = PL[d.id];
+        if (o && d.id !== ME) {
+          o.tx = d.x;
+          o.ty = d.y;
+          o.tz = d.z;
+          o.tr = d.r;
+          o.mv = d.m;
+          o.air = d.a;
+          o.td = d.d;
+        }
+        return;
+      }
+      if (d.k === "bots") {
+        if (HOST) return;
+        d.b.forEach((b) => {
+          const o = PL[b[0]];
+          if (o) {
+            o.tx = b[1];
+            o.ty = b[2];
+            o.tz = b[3];
+            o.tr = b[4];
+            o.mv = b[5];
+            o.air = b[6];
+            o.td = b[7];
+          }
+        });
+        return;
+      }
+      if (HOST) {
+        if (d.k === "ev") hostEvent(from, d.e, d.i);
+        return;
+      }
+      if (d.k === "st") applySt(d);
+      else if (d.k === "tail") onTail(d);
+      else if (d.k === "end") onEnd(d);
+    }) || (() => {
+    });
+    net.onPlayers && net.onPlayers(() => {
+      if (!HOST) return;
+      const ids = net.players.map((p) => p.id);
+      const gone = G2.al.filter((id) => !isBotId(id) && !ids.includes(id) && id !== ME);
+      if (gone.length && G2.ph !== "end") {
+        G2.al = G2.al.filter((id) => !gone.includes(id));
+        G2.tl = G2.tl.filter((id) => !gone.includes(id));
+        gone.forEach((id) => {
+          if (PL[id]) PL[id].on = false;
+        });
+        push();
+      }
+    });
+  }
+  let lastPh = "";
+  function applySt(d) {
+    (d.ros || []).forEach((r, i) => addP(r[0], r[1], r[2], i));
+    ROS = d.ros || ROS;
+    if (d.rd !== G2.rd) {
+      G2.al = d.al;
+      G2.rd = d.rd;
+      G2.dn = [];
+      G2.ou = [];
+      buildRound(d.rd);
+      placeAll();
+    }
+    if (G2.rd === 1) d.dn.forEach((id) => {
+      if (!G2.dn.includes(id) && PL[id]) {
+        PL[id].fin = 1;
+        if (id !== ME) flash("✅ " + PL[id].name + " is door!");
+      }
+    });
+    if (G2.rd === 2) d.ou.forEach((id) => {
+      if (!G2.ou.includes(id) && PL[id] && id !== ME) flash("❌ " + PL[id].name + " is gevallen!");
+    });
+    Object.assign(G2, { ph: d.ph, al: d.al, dn: d.dn, ou: d.ou, tl: d.tl, w: d.w, qq: d.qq, qN: d.qN });
+    G2.al.forEach((id) => {
+      if (PL[id]) PL[id].on = true;
+    });
+    Object.values(PL).forEach((o) => {
+      if (!G2.al.includes(o.id)) o.on = false;
+    });
+    (d.tt || []).forEach(([i, t]) => TT[i] = t);
+    if (d.ph === "intro" || d.ph === "play") {
+      const want = performance.now() - d.el * 1e3;
+      if (Math.abs(want - t0) > 250) t0 = want;
+    }
+  }
+  let lastH = performance.now(), lastFrame = 0;
+  const hostIv = setInterval(() => {
+    const now = performance.now(), dt = Math.min(0.1, (now - lastH) / 1e3);
+    lastH = now;
+    if (!SOLO && meB && G2.ph !== "menu" && (sendT -= dt) <= 0) {
+      sendT = 0.09;
+      net.send({ k: "p", id: ME, x: +meB.x.toFixed(2), y: +meB.y.toFixed(2), z: +meB.z.toFixed(2), r: +meB.r.toFixed(2), m: meB.mv, a: meB.air, d: meB.dvT > 0 ? 1 : 0 });
+    }
+    if (!HOST || ended) return;
+    const gt = clk();
+    if (now - lastFrame > 250) updEl(gt);
+    if (G2.ph === "intro" && gt >= 0) {
+      G2.ph = "play";
+      push();
+    }
+    if (G2.ph === "play") {
+      const bots = G2.al.filter((id) => PL[id] && PL[id].bot && act(id));
+      let rem = dt;
+      while (rem > 1e-4) {
+        const h = Math.min(rem, 1 / 100);
+        rem -= h;
+        for (const id of bots) {
+          const b = PL[id];
+          stepBody(b, h);
+          separate(b);
+          const e = checks(b);
+          if (e) hostEvent(id, e, b.gr && b.gr.i);
+        }
+      }
+      bots.forEach((id) => botAI(PL[id], dt));
+      if (G2.rd === 3) tailCheck();
+      if (G2.ph === "play") {
+        const n = G2.al.length;
+        if (G2.rd === 1 && G2.dn.length >= G2.qN) endRound();
+        else if (G2.rd === 2 && n - G2.ou.length <= G2.qN) endRound();
+        else if (gt >= LIM[G2.rd]) endRound();
+      }
+    } else if (G2.ph === "res") {
+      G2.resT -= dt;
+      if (G2.resT <= 0) nextRound();
+    }
+    if (!SOLO) {
+      if ((stT -= dt) <= 0) {
+        stT = 0.4;
+        push();
+      }
+      if ((botT -= dt) <= 0) {
+        botT = 0.1;
+        const bs = G2.al.filter((id) => PL[id] && PL[id].bot);
+        if (bs.length) net.send({ k: "bots", b: bs.map((id) => {
+          const o = PL[id];
+          return [id, +o.x.toFixed(2), +o.y.toFixed(2), +o.z.toFixed(2), +o.r.toFixed(2), o.mv, o.air, o.dvT > 0 ? 1 : 0];
+        }) });
+      }
+    }
+  }, 50);
+  let yaw = 0, pitch = 0.38, camD = 8, drag = null;
+  c.addEventListener("pointerdown", (e) => {
+    drag = { x: e.clientX, y: e.clientY, id: e.pointerId };
+    try {
+      c.setPointerCapture(e.pointerId);
+    } catch (x) {
+    }
+  });
+  c.addEventListener("pointermove", (e) => {
+    if (!drag || drag.id !== e.pointerId) return;
+    yaw -= (e.clientX - drag.x) * 6e-3;
+    pitch = Math.max(-0.15, Math.min(1.3, pitch + (e.clientY - drag.y) * 4e-3));
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+  });
+  const endDrag = () => {
+    drag = null;
+  };
+  c.addEventListener("pointerup", endDrag);
+  c.addEventListener("pointercancel", endDrag);
+  c.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    camD = Math.max(3, Math.min(20, camD * (1 + Math.sign(e.deltaY) * 0.12)));
+  }, { passive: false });
+  let flashT = 0;
+  function flash(t) {
+    $h(".vr-msg").textContent = t;
+    flashT = 3;
+  }
+  const card2 = $h(".vr-card");
+  let cardKey = "";
+  function showCard(html) {
+    if (cardKey === html) return;
+    cardKey = html;
+    card2.innerHTML = html;
+    card2.style.display = html ? "block" : "none";
+  }
+  const DESC = ["", "Ren naar de finish langs draaiende hamers, schuivende muren en wipplanken. De eerste {q} gaan door!", "De tegels vallen kort nadat je erop stapt — drie lagen diep! Blijf staan: de laatste {q} gaan door.", "Pak een staartje door iemand van achteren aan te tikken (duiken met E helpt). Wie na 60 s een staart heeft, gaat door. Plekken: {q}.", "Klim de toren op en grijp als eerste de kroon!"];
+  const fmt = (s) => {
+    s = Math.max(0, Math.ceil(s));
+    return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  };
+  const menu = E("div", "vr-menu");
+  wrap.append(menu);
+  let nb = 7;
+  function showMenu() {
+    menu.style.display = "flex";
+    menu.innerHTML = "";
+    menu.append(E("h2", "", "🏃 Val Race"));
+    menu.append(E("p", "", "Een gekke spelshow in 4 rondes: Obstakelrace, Valtegels, Staartjesjacht en de finale Kroonklim. Overleef elke ronde en grijp de kroon!"));
+    let rec = 0;
+    try {
+      rec = best("valrace", 0);
+    } catch (e) {
+    }
+    if (rec) menu.append(E("p", "", "🏆 Beste: " + rec + " punten"));
+    menu.append(E("p", "", "Tegenstanders:"));
+    const row = E("div", "row");
+    [7, 11].forEach((n) => {
+      const b = E("button", nb === n ? "on" : "", n + " bots");
+      b.onclick = () => {
+        nb = n;
+        showMenu();
+      };
+      row.append(b);
+    });
+    menu.append(row);
+    const go = E("button", "", "▶ Start de show");
+    go.style.background = "#2bb673";
+    go.style.color = "#fff";
+    go.style.minWidth = "190px";
+    go.onclick = () => startShow();
+    menu.append(go);
+  }
+  function startShow() {
+    menu.style.display = "none";
+    overlay(st, c, null);
+    ended = false;
+    Object.values(PL).forEach((o) => {
+      scene.remove(o.root);
+      delete PL[o.id];
+    });
+    initRoster(nb);
+    meB = PL[ME];
+    G2.sv = {};
+    startRound(1, ROS.map((r) => r[0]));
+  }
+  let tt = 0, lastCd = -1;
+  const stopL = loop((dt) => {
+    dt = Math.min(dt, 0.05);
+    tt += dt;
+    lastFrame = performance.now();
+    frame(dt);
+  });
+  function frame(dt) {
+    if (flashT > 0 && (flashT -= dt) <= 0) $h(".vr-msg").textContent = "";
+    if (!meB && PL[ME]) meB = PL[ME];
+    const gt = clk();
+    if (G2.rd) updEl(gt);
+    else updEl(tt);
+    if (meB && act(ME) && meB.on) {
+      const can = G2.ph === "play";
+      const c2 = meB.ctl;
+      let fx = 0, fz = 0;
+      if (can) {
+        if (K("w", "z", "ArrowUp")) fz += 1;
+        if (K("s", "ArrowDown")) fz -= 1;
+        if (K("a", "q", "ArrowLeft")) fx -= 1;
+        if (K("d", "ArrowRight")) fx += 1;
+      }
+      const l = Math.hypot(fx, fz), fw = [Math.sin(yaw), Math.cos(yaw)], rt = [-Math.cos(yaw), Math.sin(yaw)];
+      c2.wx = c2.wz = 0;
+      if (l > 0) {
+        c2.wx = (fw[0] * fz + rt[0] * fx) / l;
+        c2.wz = (fw[1] * fz + rt[1] * fx) / l;
+      }
+      c2.jh = K(" ") ? 1 : 0;
+      if (jumpPress) {
+        jumpPress = 0;
+        if (can) c2.jp = 1;
+      }
+      if (divePress) {
+        divePress = 0;
+        if (can) c2.dv = 1;
+      }
+      if (G2.ph === "play" || G2.ph === "intro") {
+        let rem = dt;
+        while (rem > 1e-4) {
+          const h = Math.min(rem, 1 / 120);
+          rem -= h;
+          stepBody(meB, h);
+          separate(meB);
+          const e = G2.ph === "play" ? checks(meB) : null;
+          if (e) {
+            if (e === "tile") TT[meB.gr.i] = gt;
+            if (e === "fin") {
+              flash("✅ Je bent door! Wacht op de rest…");
+              beep(1046, 0.2, "triangle", 0.06);
+              beep(1318, 0.3, "triangle", 0.06);
+            }
+            if (e === "out") {
+              flash("😵 Gevallen… je bent uit deze show");
+              beep(160, 0.4, "sawtooth", 0.05);
+            }
+            if (HOST) hostEvent(ME, e, meB.gr && meB.gr.i);
+            else net.send({ k: "ev", e, i: meB.gr ? meB.gr.i : null });
+          }
+        }
+      }
+    } else {
+      jumpPress = divePress = 0;
+    }
+    const wb = G2.ph === "end" ? PL[G2.w] : null;
+    Object.values(PL).forEach((o) => {
+      const remote = o.id !== ME && !SOLO && !(HOST && o.bot);
+      if (remote) {
+        const k = Math.min(1, dt * 12);
+        if (Math.hypot(o.tx - o.x, o.tz - o.z) > 6) {
+          o.x = o.tx;
+          o.y = o.ty;
+          o.z = o.tz;
+        }
+        o.x += (o.tx - o.x) * k;
+        o.y += (o.ty - o.y) * k;
+        o.z += (o.tz - o.z) * k;
+        let dr = o.tr - o.r;
+        dr = Math.atan2(Math.sin(dr), Math.cos(dr));
+        o.r += dr * k;
+      }
+      o.root.visible = o.on && act(o.id) || o === wb;
+      if (!o.root.visible) return;
+      o.root.position.set(o.x, o.y, o.z);
+      o.root.rotation.y = o.r;
+      o.ph += dt * (o.mv ? 13 : 0);
+      animateSoldier(o.sd, o.ph, o.mv ? 1 : 0);
+      const div = remote ? o.td : o.dvT > 0;
+      if (o.air && !div) {
+        o.sd.armL.rotation.x = o.sd.armR.rotation.x = -2.5;
+        o.sd.legL.rotation.x = 0.45;
+        o.sd.legR.rotation.x = -0.3;
+      }
+      o.bod.rotation.x += ((div ? 1.25 : 0) - o.bod.rotation.x) * Math.min(1, dt * 14);
+      if (div) {
+        o.sd.armL.rotation.x = o.sd.armR.rotation.x = -3;
+        o.bod.position.y = 0.35;
+      } else o.bod.position.y = 0;
+      o.sq = Math.max(0, (o.sq || 0) - dt * 2.2);
+      const hop = o.mv ? Math.abs(Math.sin(o.ph)) * 0.07 : 0;
+      const sy = 1 - o.sq * 0.55 + hop, sxz = 1 + o.sq * 0.35 - hop * 0.4;
+      o.bod.scale.set(sxz, sy, sxz);
+      if (remote && o.air) o.wasAir = 1;
+      else if (remote && o.wasAir) {
+        o.wasAir = 0;
+        o.sq = 0.3;
+      }
+      o.tail.visible = G2.rd === 3 && G2.tl.includes(o.id) && G2.ph !== "end";
+      if (o.tail.visible) o.tail.rotation.y = Math.sin(tt * 9 + o.x) * 0.5;
+      o.tag.visible = o.id !== ME;
+    });
+    let tg = wb || (meB && act(ME) && meB.on ? meB : null);
+    if (!tg) {
+      const id = G2.al.find((i) => act(i) && PL[i]);
+      tg = id ? PL[id] : meB;
+    }
+    if (tg) {
+      const cx = tg.x - Math.sin(yaw) * camD * Math.cos(pitch), cz = tg.z - Math.cos(yaw) * camD * Math.cos(pitch), cy = tg.y + 1.4 + Math.sin(pitch) * camD;
+      cam.position.set(cx, Math.max(cy, goo.position.y + 1), cz);
+      cam.lookAt(tg.x, tg.y + 1.3, tg.z);
+      if (wb) yaw += dt * 0.4;
+    } else {
+      cam.position.set(Math.sin(tt * 0.2) * 30, 18, Math.cos(tt * 0.2) * 30);
+      cam.lookAt(0, 0, 0);
+    }
+    gooMat.emissiveIntensity = 0.35 + Math.sin(tt * 2) * 0.12;
+    hudUpd(gt);
+    ren.render(scene, cam);
+  }
+  function hudUpd(gt) {
+    const P = G2.ph;
+    if (P === "menu" || !G2.rd) {
+      $h(".vr-top").textContent = "";
+      $h(".vr-rd").textContent = "";
+      $h(".vr-cnt").textContent = "";
+      return;
+    }
+    $h(".vr-rd").textContent = "Ronde " + G2.rd + "/4";
+    $h(".vr-top").textContent = P === "end" ? "👑 Val Race" : RE[G2.rd] + " " + RN[G2.rd] + (P === "play" ? " · " + fmt(LIM[G2.rd] - gt) : "");
+    const n = G2.al.length;
+    let cn = "";
+    if (G2.rd === 1) cn = "✅ Door: " + G2.dn.length + "/" + G2.qN;
+    else if (G2.rd === 2) cn = "🧍 Nog over: " + (n - G2.ou.length) + " · door: " + G2.qN;
+    else if (G2.rd === 3) cn = "🦊 Staartjes: " + G2.tl.length + (act(ME) ? G2.tl.includes(ME) ? "<br>Jij hebt er een!" : "<br>Pak er een!" : "");
+    else cn = "👑 Pak de kroon!";
+    if (!act(ME) && P !== "end" && G2.al.length) cn += "<br>👀 Je kijkt mee";
+    if ($h(".vr-cnt").innerHTML !== cn) $h(".vr-cnt").innerHTML = cn;
+    const big = $h(".vr-big");
+    if (P === "intro") {
+      if (gt < -3) {
+        showCard('<div class="em">' + RE[G2.rd] + "</div><h2>" + (G2.rd === 4 ? "Finale · " : "Ronde " + G2.rd + " · ") + RN[G2.rd] + "</h2><p>" + DESC[G2.rd].replace("{q}", G2.qN) + '</p><p style="opacity:.85">' + n + " spelers" + (act(ME) ? "" : " · jij kijkt mee") + "</p>");
+        big.textContent = "";
+      } else {
+        showCard("");
+        const k = Math.ceil(-gt);
+        if (k !== lastCd && k > 0) {
+          lastCd = k;
+          beep(440, 0.15, "square", 0.05);
+        }
+        big.textContent = k > 0 ? String(k) : "";
+      }
+    } else if (P === "play") {
+      showCard("");
+      if (lastCd !== 0) {
+        lastCd = 0;
+        big.textContent = "GO!";
+        beep(880, 0.3, "square", 0.06);
+        setTimeout(() => {
+          if (big.textContent === "GO!") big.textContent = "";
+        }, 700);
+      }
+    } else if (P === "res") {
+      big.textContent = "";
+      const q = G2.qq, out = G2.al.filter((id) => !q.includes(id));
+      const mine = G2.al.includes(ME) ? q.includes(ME) ? "<h2>🎉 Je bent door!</h2>" : "<h2>😵 Uitgeschakeld</h2>" : "<h2>" + RE[G2.rd] + " " + RN[G2.rd] + " voorbij</h2>";
+      showCard(mine + "<p>✅ " + (q.map((id) => esc2(PL[id] ? PL[id].name : "?")).join(", ") || "niemand") + "</p>" + (out.length ? '<p style="opacity:.85">❌ ' + out.map((id) => esc2(PL[id] ? PL[id].name : "?")).join(", ") + "</p>" : ""));
+      lastCd = -1;
+    } else if (P === "end") big.textContent = "";
+  }
+  window.__vr = { G: G2, PL, TT: () => TT, clk, endRound, startRound, get me() {
+    return meB;
+  }, inp, HEX: () => HEX };
+  if (SOLO) showMenu();
+  else {
+    menu.style.display = "none";
+    if (HOST) {
+      initRoster(0);
+      meB = PL[ME];
+      setTimeout(() => {
+        if (alive && !G2.rd) startRound(1, ROS.map((r) => r[0]));
+      }, 1500);
+    } else {
+      meB = addP(ME, net.me.name || "Jij", 0, 0);
+    }
+  }
+  let alive = true;
+  return () => {
+    alive = false;
+    stopL();
+    clearInterval(hostIv);
+    inp.stop();
+    removeEventListener("blur", clearKeys);
+    document.removeEventListener("visibilitychange", onVis);
+    try {
+      offN();
+    } catch (e) {
+    }
+    overlay(st, c, null);
+    T.dispose();
+  };
+}
 function stadspelGame(st, net) {
   const SOLO = !!net.solo, HOST = net.isHost, ME = net.me.id;
   const MAXR = 20, START_CASH = 1500, PASS = 200, STEP = 120;
@@ -39988,6 +41411,9 @@ const MP = [
   { id: "stadspel", n: "Stadspel", e: "🏙️", c: "Samen", g: "#2bb673,#1e3a5f", min: 2, max: 6, bots: true, run(st, net) {
     return stadspelGame(st, net);
   } },
+  { id: "valrace", n: "Val Race", e: "🏃", c: "Samen", g: "#ff5fa2,#7b4dff", min: 1, max: 12, bots: true, run(st, net) {
+    return valraceGame(st, net);
+  } },
   { id: "zombie", n: "Zombie Overleven", e: "🧟", c: "Samen", g: "#3ddc84,#1b2a1f", min: 1, max: 6, bots: true, run(st, net) {
     return zombieGame(st, net);
   } }
@@ -41853,7 +43279,7 @@ function tourPicker() {
   };
   c.insertBefore(rnd, g);
 }
-const BOTH = { kart: "kart", bommen: "bommen", keuken: "keuken", overleef: "overleef", paintball: "paintball", golf3d: "golf3d", bowling: "bowling", obby: "obby", zombie: "zombie", mens: "mens", ganzenbord: "ganzenbord", stadspel: "stadspel", hide: "hide", boxing: "boxing", bbox: "bbox", avia: "avia", blokkenland: "blokkenland", chess: "chess", connect4: "connect4", checkers: "checkers", othello: "othello", battleship: "battleship", ttt: "ttt", dots: "dots", yahtzee: "yahtzee", pong: "pong", sudoku: "sudoku", mines: "mines", woordzoeker: "woordzoeker", quiz: "quiz", snake: "snakeduel" };
+const BOTH = { kart: "kart", valrace: "valrace", bommen: "bommen", keuken: "keuken", overleef: "overleef", paintball: "paintball", golf3d: "golf3d", bowling: "bowling", obby: "obby", zombie: "zombie", mens: "mens", ganzenbord: "ganzenbord", stadspel: "stadspel", hide: "hide", boxing: "boxing", bbox: "bbox", avia: "avia", blokkenland: "blokkenland", chess: "chess", connect4: "connect4", checkers: "checkers", othello: "othello", battleship: "battleship", ttt: "ttt", dots: "dots", yahtzee: "yahtzee", pong: "pong", sudoku: "sudoku", mines: "mines", woordzoeker: "woordzoeker", quiz: "quiz", snake: "snakeduel" };
 const AI_SOLO = ["chess", "connect4", "checkers", "othello", "battleship", "ttt", "dots", "pong"];
 function pickMode(g) {
   const mid = BOTH[g.id];
@@ -63143,6 +64569,20 @@ const G = [
     } };
     return stadspelGame(st, net);
   } },
+  { id: "valrace", n: "Val Race", e: "🏃", c: "3D", g: "#ff5fa2,#7b4dff", nw: 1, run(st) {
+    const me = { id: "me", name: PROFILE.get().name || "Jij" };
+    const net = { solo: true, isHost: true, me, players: [me], send() {
+    }, sendTo() {
+    }, on() {
+      return () => {
+      };
+    }, onPlayers() {
+      return () => {
+      };
+    }, pname: (p) => p.name, pcol: () => "#e5484d", isBot: (id) => id !== "me", result() {
+    } };
+    return valraceGame(st, net);
+  } },
   { id: "zombie", n: "Zombie Overleven", e: "🧟", c: "3D", g: "#3ddc84,#1b2a1f", nw: 1, run(st) {
     const me = { id: "me", name: PROFILE.get().name || "Jij" };
     const net = { solo: true, isHost: true, me, players: [me], send() {
@@ -63768,7 +65208,7 @@ draw();
 })();
 ;
 (function() {
-  const HOWTO = { "dday": ["🎯 Aanvallers veroveren de vier controlepunten in volgorde; verdedigers houden de posities tot de timer afloopt.", "🟦 De landingsboten brengen aanvallers vanaf het transportschip naar het strand. Betwist een zone door erin te staan.", "📱 Gebruik de pijltjesknoppen om te lopen, sleep op het beeld om te richten en houd 🔥 vast om te schieten.", "⌨️ WASD / pijltjes lopen, muis richten en F schieten, R herladen, 1–5 wisselen, G granaat, spatie sprint.", "🤖 Ontbrekende plaatsen in de 4-tegen-4-match worden automatisch met bots gevuld; ze zoeken dekking en verdedigen of bestormen het actieve doel."], "solo": { "2048": ["🎯 Schuif de tegels zodat gelijke getallen samensmelten en haal de tegel 2048.", "📱 Veeg in een richting om alle tegels te schuiven.", "⌨️ Pijltjes of WASD.", "💡 Houd je grootste tegel in een hoek en vul de rij ernaast."], "wordle": ["🎯 Raad het geheime woord van 5 letters in 6 pogingen.", "📱 Tik de letters op het toetsenbord onder het rooster en daarna op Enter.", "⌨️ Typ het woord en druk op Enter; Backspace wist een letter.", "🟩 Groen = juiste letter op de juiste plek, 🟨 geel = letter zit erin maar op een andere plek, grijs = zit er niet in.", "💡 Begin met een woord met veel verschillende klinkers."], "snake": ["🎯 Eet zoveel mogelijk appels zonder tegen jezelf of de muur te botsen.", "📱 Veeg over het speelveld om van richting te veranderen.", "⌨️ Pijltjes of WASD om te sturen.", "⭐ Een ster is 5 punten waard; elke appel maakt je sneller.", "💡 Blijf langs de randen draaien als je slang lang wordt."], "memory": ["🎯 Vind alle paren zo snel en met zo weinig beurten mogelijk.", "📱 Tik op twee kaarten om ze om te draaien.", "⌨️ Klik met de muis op de kaarten.", "💡 Onthoud waar je elke kaart al gezien hebt, ook als ze niet passen."], "ttt": ["🎯 Zet drie ❌ op een rij — horizontaal, verticaal of schuin — voor de computer ⭕ dat doet.", "📱 Tik op een leeg vak.", "⌨️ Pijltjes + spatie of de toetsen 1–9.", "💡 Neem het midden of een hoek en blokkeer twee-op-een-rij van de tegenstander."], "mines": ["🎯 Open alle vakjes zonder op een mijn te stappen.", "📱 Tik = graven, lang drukken of de 🚩-knop = vlag zetten.", "⌨️ Klik = graven, rechtsklik = vlag; of pijltjes + spatie en F.", "🔢 Een cijfer zegt hoeveel mijnen er rond dat vakje liggen.", "💡 Tik op een cijfer met genoeg vlaggen eromheen om alle buren in één keer te openen."], "flappy": ["🎯 Vlieg zo ver mogelijk tussen de buizen door.", "📱 Tik op het scherm om te fladderen.", "⌨️ Spatie of ▲.", "🏅 Medailles bij 10, 20, 30 en 50 punten.", "💡 Korte, rustige tikjes werken beter dan veel tegelijk."], "simon": ["🎯 Herhaal de kleurenreeks die steeds een stapje langer wordt.", "📱 Tik op de kleuren in dezelfde volgorde.", "⌨️ Toetsen 1–4 of Q W A S.", "💡 Zeg de kleuren zachtjes mee; het tempo gaat omhoog."], "mole": ["🎯 Mep zoveel mogelijk mollen voor de tijd op is.", "📱 Tik op een mol zodra hij opduikt.", "⌨️ Toetsen 1–9 (numpad) of Q W E / A S D / Z X C.", "🌟 Een gouden mol is +5; mis je, dan gaat er 1 punt af."], "tetris": ["🎯 Maak volle rijen met de vallende blokken; elke volle rij verdwijnt.", "📱 Tik = draaien, sleep = schuiven, veeg omlaag = laten vallen.", "⌨️ ← → schuiven, ↑/X draaien, Z terugdraaien, ↓ zacht, spatie = vallen, C = vasthouden, P = pauze.", "💡 Laat één kolom open voor een lang blok en ruim 4 rijen tegelijk op."], "breakout": ["🎯 Breek alle blokken met de bal zonder hem te laten vallen.", "📱 Sleep om de peddel te bewegen, tik om de bal te lanceren.", "⌨️ ◀ ▶ = peddel, spatie = lanceren.", "🎁 Vang power-ups: ↔ breed, ●● multibal, 🐢 traag, ❤ extra leven.", "💡 Raak de bal met de rand van de peddel voor een scherpere hoek."], "pong": ["🎯 Speel de bal langs de computer; wie eerst 7 punten heeft, wint.", "📱 Sleep op het speelveld om je peddel te bewegen.", "⌨️ ▲ ▼ of W S.", "💡 Raak de bal met de rand van je peddel voor een scherpe hoek."], "galgje": ["🎯 Raad het woord letter voor letter voor het galgje af is.", "📱 Tik op de letters op het scherm.", "⌨️ Typ letters op je toetsenbord.", "💡 Na 8 fouten hang je; begin met veelvoorkomende letters zoals E, N en A."], "slide": ["🎯 Zet alle tegels op volgorde met het lege vak rechtsonder.", "📱 Tik op een tegel naast (of in lijn met) het gat, of veeg.", "⌨️ Pijltjes.", "💡 Los eerst de bovenste rij op, dan de linker kolom, en zo verder."], "lights": ["🎯 Doe alle lampen uit.", "📱 Tik op een lamp: die en zijn buren schakelen om.", "⌨️ Pijltjes + spatie.", "💡 Werk rij per rij: tik onder elke brandende lamp in de rij erboven."], "react": ["🎯 Meet je reactiesnelheid: hoe sneller, hoe beter.", "📱 Tik zodra het vlak groen wordt — niet eerder!", "⌨️ Spatie of klikken.", "📊 Je doet 5 pogingen; je gemiddelde telt."], "blokkenland": ["🎯 Bouw, ontdek en overleef in een blokkenwereld (Creatief of Overleven).", "📱 Links slepen = lopen, rechts slepen = kijken, ⛏️ ingedrukt = breken, 🧱 = plaatsen, ⤒ = springen.", "⌨️ WASD lopen, muis/slepen kijken, klik/X breken, rechtsklik/C plaatsen, 1–9 of wiel = blok kiezen, spatie springen, E = blokken.", "✈️ In Creatief: 2× springen of F = vliegen.", "💡 Je wereld wordt bewaard op dit toestel."], "runner3d": ["🎯 Ren zo ver mogelijk en ontwijk de obstakels.", "📱 Veeg links/rechts = baan wisselen, omhoog vegen = springen.", "⌨️ ◀ ▶ baan wisselen, ▲ of spatie springen.", "💡 Kijk vooruit en wissel op tijd van baan; het gaat steeds sneller."], "helix": ["🎯 Laat de bal door de gaten van de toren naar beneden vallen.", "📱 Sleep links/rechts om de toren te draaien.", "⌨️ ◀ ▶.", "🟥 Raak je een rood stuk, dan ben je af.", "💡 Val door 3 ringen in één keer voor een 🔥 smash die zelfs rood breekt."], "stack3d": ["🎯 Stapel de blokken zo hoog mogelijk.", "📱 Tik om het bewegende blok neer te zetten.", "⌨️ Spatie.", "💡 Wat uitsteekt, valt eraf. 3× perfect op elkaar laat het blok weer groeien."], "ball3d": ["🎯 Rol de bal over het veld en pak alle 8 💎.", "📱 Sleep over het veld om de bal te duwen.", "⌨️ Pijltjes ◀ ▲ ▼ ▶.", "💡 Rem op tijd af: val niet in de gaten."], "bbox": ["🎯 5 levels: elke keer zit je in een grotere kartonnen doos vol knoppen (3D, door je eigen ogen). Eén knop geeft de 🔑 sleutel, een andere opent de 🚪 uitgang in het plafond.", "⌨️ WASD/ZQSD of pijltjes = lopen · klik in de doos en kijk met de muis · klik of E = indrukken/oppakken · spatie = springen · bij de touwladder spatie/W = klimmen.", "🦆 Alles wat de grapknoppen laten verschijnen is echt 3D en interactief: klik = het reageert (ballon knalt, kat miauwt, spook verdwijnt, pizza opeten…), loop ertegen = schoppen, R = vastpakken en gooien — ook naar andere spelers!", "🎒 Items: zaklamp, springschoenen, skateboard, vergrootglas (echte knoppen fonkelen) en ballon (zweven). G = laten vallen. Vanaf level 4 is het donker!", "🤝 Samen: F = iemand duwen, 1-6 = emoji. De speler met de sleutel ontgrendelt het luik. ⏱️ Je totale tijd telt — verbreek je record!"], "kart": ["🎯 Race 3 rondes tegen de anderen (of tegen de computer) en kom als eerste over de finish.", "⌨️ W/↑ = gas · S/↓ = remmen/achteruit · A D / ← → = sturen · spatie of E = item gebruiken.", "❓ Rij door de gele blokken voor een item: 🍌 banaan (achter je), 🚀 raket (op wie voor je rijdt), 🛡️ schild, ⚡ turbo of 🛢️ olie.", "🌱 Naast de weg rij je veel trager — blijf op het asfalt!"], "hide": ["🎯 Kies Klassiek of Prop hunt. Eén speler zoekt: die telt 20 s met een zwart scherm terwijl de rest zich verstopt in het grote huis (6 kamers, kasten, tuin met schuur en hagen).", "⌨️ WASD/pijltjes = lopen · Shift = rennen · sleep = rondkijken · scrollwiel = zoomen (helemaal in = eerste persoon).", "🏠 Klassiek: de zoeker loopt naar je toe en drukt E of klikt = gevonden. Wie gevonden is zoekt mee!", "📦 Prop hunt: ga naast een voorwerp staan en druk E om erin te veranderen (Q = ander voorwerp, R = draaien). Blijf stil! De zoeker klikt op verdachte voorwerpen — fout = −4 s.", "⏱️ Een ronde duurt 3 minuten. Niet gevonden = 5 punten."], "stadspel": ["🎲 Gooi de dobbelstenen en koop straten waar je op landt; wie op jouw straat komt, betaalt huur.", "🏠 Heb je een hele kleurgroep, dan verdubbelt de huur en mag je huizen (max 3) en een winkelcentrum bouwen.", "🤝 Tik op een straat van een ander om een bod te doen; Kans-kaarten en de Strafbank zorgen voor verrassingen.", "🏆 Na 20 rondes wint wie het rijkst is (geld + bezit); wie niet kan betalen, gaat failliet."], "maker": ["🛠️ Bouw je eigen level: kies een tegel en klik of sleep in het raster (rechtermuisknop = gummen, Ctrl+Z = ongedaan).", "▶️ Zet een Start en een Finish, en druk op ▶ Test om je level te spelen (Esc = terug naar de editor).", "⌨️ Lopen met ←/→, springen met spatie of ↑. Spring op vijanden, pak munten en de sleutel voor de deur; vlaggen zijn checkpoints.", "🔗 Met Deel krijg je een code voor vrienden, of publiceer je je level online; bij Ontdek levels speel je de levels van anderen."], "mens": ["🎲 Gooi een 6 om een pion op het bord te zetten; met een 6 mag je nog eens.", "👆 Tik op een oplichtende pion om te zetten; land je op een ander, dan gaat die terug naar zijn hok.", "🔁 Zonder pionnen op het bord heb je 3 pogingen om een 6 te gooien.", "🏠 Breng als eerste alle 4 pionnen precies thuis."], "ganzenbord": ["🎲 Gooi twee dobbelstenen en loop vooruit; als eerste precies op 63 wint, te veel = terugkaatsen.", "🪿 Gans: nog eens zo ver. 🌉 6→12, 🌀 42→39, 💀 58 terug naar start.", "🍺 Herberg (19): één beurt overslaan. 🕳️ Put (31) en 🔒 gevangenis (52): wachten tot een ander je komt bevrijden.", "✨ Optioneel: eerste worp 6+3 → 26, 5+4 → 53."], "obby": ["🎯 Ren, spring en klim door 4 fases boven een zee van lava naar de finish.", "⌨️ WASD/pijltjes = lopen, Spatie = springen; sleep om de camera te draaien, scroll om te zoomen.", "🚩 Vallen of lava = terug naar je laatste checkpoint. Pak bij checkpoint 2 de ✨ dubbele sprong!", "👻 Online wint wie het eerst over de finish is; solo race je tegen je eigen beste tijd."], "zombie": ["🧟 Overleef zo veel mogelijk zombiegolven op het dorpsplein; elke 5e golf komt er een baas-zombie!", "⌨️ Lopen met WASD/pijltjes, mikken met de muis en klikken om te schieten (spatie of 🔫 = automatisch mikken).", "🪙 Verzamel muntjes en koop tussen de golven een shotgun, blaster, medkit of barricade.", "🤝 Ben je neer? Een maatje redt je door naast je te staan. Score = golven × 100 + zombies."], "golf3d": ["⛳ Sleep vanaf het veld naar achteren en laat los om te slaan: hoe verder je sleept, hoe harder.", "⌨️ Of houd spatie / ⛳ ingedrukt en laat los; je slaat in de kijkrichting van de camera (draaien met ← → of ⟲ ⟳).", "💧 Water of van de baan vallen = +1 strafslag; maximaal 8 slagen per hole.", "🏆 Iedereen speelt tegelijk dezelfde hole; de laagste totaalscore na 9 holes wint."], "bowling": ["↔️ Kies je positie met ← → en je effect (curve) met ↑ ↓.", "🎳 Druk op spatie of 🎳 om de krachtmeter te starten en druk nog eens om te gooien — of veeg omhoog over de baan.", "⭐ Strike = 10 + de volgende 2 ballen, spare = 10 + de volgende bal.", "🏆 Na 10 frames wint de hoogste score; online gooit iedereen om de beurt een frame."], "keuken": ["🍅 Pak ingrediënten uit de kratten, snijd ze op de snijplank (houd E ingedrukt) en bak ze in de pan of oven.", "🛎️ Leg alles op een schoon bord en breng het naar het serveerluik vóór de bon verloopt — snel = fooi!", "🔥 Laat niets te lang staan: verbrand eten vat vuur, blus het met de rode blusser (houd E).", "🧽 Was vuile borden af bij de gootsteen en werk samen voor 3 sterren."], "paintball": ["🚩 Kies een modus: Vlag veroveren (pak de vijandelijke vlag en breng hem naar je basis, eerst 3) of 🎯 Teamdeathmatch (eerst 25 treffers).", "⌨️ WASD/pijltjes = lopen, muis = richten, klik = schieten, spatie = springen, Shift = sprinten, R = herladen.", "📱 Op je telefoon: knoppen om te lopen, sleep om rond te kijken, 🎯 schiet en richt vanzelf.", "🎨 Geraakt? Dan ben je 4 seconden uit en kom je terug bij je basis."], "overleef": ["🔺 Overleef vier speelplaatsspelletjes na elkaar: Rood licht groen licht, Touwtrekken, Glazen brug en Stoelendans.", "🚦 Loop met ▲ als de robot wegkijkt en sta stil bij rood. Bij touwtrekken druk je snel op Spatie (in het groen telt dubbel).", "🌉 Op de brug kies je ◀ of ▶. Bij de stoelendans druk je op Spatie zodra de muziek stopt.", "🎉 Wie afvalt, verdwijnt met een confetti-poef en kijkt mee. Wie als laatste overblijft, wint!"], "bommen": ["💣 Loop met de pijltjes/WASD en leg met spatie (of 💣) een bom.", "🎁 Blaas kratten op voor power-ups: 💣 meer bommen, 🔥 groter vuur, 👟 sneller, 🦶 bommen wegschoppen, 🛡️ schild.", "💥 Ontploffingen zetten andere bommen af; na 90 seconden krimpt de arena.", "🏆 Wie als laatste overblijft wint de ronde; wie eerst 2 rondes wint, wint het spel."], "boxing": ["🎯 Raak je tegenstander zo vaak mogelijk: jab = 1 punt, hoek = 2, uppercut = 3. Eerste tot 20 punten of een knock-out wint.", "⌨️ → naar de tegenstander, ← achteruit, ↓ afweren · linkermuisknop/rechtermuisknop = linkse/rechtse jab · A/E hoeken · W/C uppercuts (zelf aan te passen met ⌨️ Toetsen instellen).", "🛡️ Afweren houdt jabs en hoeken bijna helemaal tegen, maar een uppercut komt er half door.", "📱 Op een gsm gebruik je de knoppen onder de ring."], "avia": ["🎯 Kies je inzet in virtuele munten en druk op Speel: het vliegtuigje stijgt op van het vliegdekschip en vliegt vanzelf.", "🪙 Elk token dat je raakt telt op of vermenigvuldigt én duwt het vliegtuig omhoog; mis je ze, dan zakt het. Een raket halveert je score en duwt je omlaag, een onweerswolk beëindigt de vlucht.", "🛬 Zakt het vliegtuig tot boven het water, dan zoekt het een landingsplek: vliegdekschip, eiland, booreiland, vliegveld, vrachtschip, ponton, helikopterplatform of een klein vlot. Meestal lukt dat (je krijgt je rondescore als munten), soms plonst het in zee en ben je je inzet kwijt.", "⚙️ Snelheid, startmunten, tokenwaarden en kansen stel je in via ⚙️. Munten zijn alleen virtueel en niets waard."], "race3d": ["🎯 Rij zo ver mogelijk en haal auto’s in zonder te botsen.", "📱 Houd links of rechts op het scherm ingedrukt om te sturen.", "⌨️ ◀ ▶.", "💡 Rakelings passeren levert bonuspunten op."], "space3d": ["🎯 Vlieg door de ruimte, schiet en ontwijk de asteroïden.", "📱 Sleep om te sturen; vasthouden of 🔥 = schieten.", "⌨️ Pijltjes sturen, spatie schieten.", "💡 Blijf in beweging; stilstaan is gevaarlijk."], "maze3d": ["🎯 Vind de groene uitgang van het doolhof.", "📱 ▲ ▼ = lopen, ◀ ▶ of slepen = draaien.", "⌨️ Pijltjes: ▲ ▼ lopen, ◀ ▶ draaien.", "💡 Houd steeds één hand aan dezelfde muur: zo kom je altijd buiten."], "tunnel3d": ["🎯 Vlieg zo ver mogelijk door de tunnel.", "📱 Sleep of gebruik ◀ ▶ om rond te draaien in de tunnel.", "⌨️ ◀ ▶.", "💡 Vlieg door de opening, ontwijk de balken en pak 💎 voor extra punten."], "platform3d": ["🎯 Pak 10 ⭐ en haal de vlag.", "📱 Gebruik de knoppen om te lopen en ⤒ om te springen.", "⌨️ Pijltjes of WASD lopen, spatie springen.", "💡 Spring bovenop vijanden om ze te verslaan."], "surprise3d": ["🎯 Speel minigolf: krijg de bal in zo weinig slagen mogelijk in de put.", "📱 Sleep vanaf de bal naar achteren en laat los, als een katapult.", "⌨️ ◀ ▶ richten, − + kracht, spatie = slaan.", "💡 Hoe verder je trekt, hoe harder de slag; gebruik de randen om te stuiteren."], "invaders": ["🎯 Schiet alle invasieschepen neer voor ze beneden zijn.", "📱 Sleep of ◀ ▶ = bewegen, tik of 🔥 = schieten.", "⌨️ ◀ ▶ bewegen, spatie schieten.", "💡 Verschuil je achter de schilden en ruim eerst de buitenste rijen op."], "asteroids": ["🎯 Schiet de asteroïden kapot zonder geraakt te worden.", "📱 Slepen = draaien, tik = schieten; of de knoppen ◀ ▲ ▶ 🔥.", "⌨️ ◀ ▶ draaien, ▲ gas, spatie schieten.", "💡 Grote stenen breken in kleinere; geef kort gas en laat je drijven."], "pacman": ["🎯 Eet alle stipjes in het doolhof en ontwijk de spoken.", "📱 Veeg of gebruik de knoppen om te sturen.", "⌨️ Pijltjes.", "💡 Na een grote stip kun je even de spoken opeten."], "frogger": ["🎯 Breng 5 kikkers veilig over de weg en de rivier naar huis.", "📱 Veeg of gebruik de knoppen; tik = één sprong vooruit.", "⌨️ Pijltjes.", "💡 Op de rivier spring je op boomstammen; in het water val je."], "dino": ["🎯 Ren zo ver mogelijk en spring over de cactussen.", "📱 Tik om te springen.", "⌨️ Spatie of ⬆ springen, ⬇ bukken.", "💡 Bukken helpt tegen vogels; het tempo gaat langzaam omhoog."], "doodle": ["🎯 Spring zo hoog mogelijk van platform naar platform.", "📱 Houd je vinger links of rechts van het midden, of gebruik de knoppen.", "⌨️ ◀ ▶ sturen.", "💡 Je springt vanzelf; ga je aan één kant uit beeld, dan kom je aan de andere kant terug."], "lander": ["🎯 Land de maanlander zacht op een groen platform.", "📱 Houd het scherm of 🔥 vast voor stuwkracht, ◀ ▶ = draaien.", "⌨️ ▲ of spatie = stuwkracht, ◀ ▶ = draaien.", "💡 Kom recht en langzaam naar beneden en let op je brandstof."], "platformer": ["🎯 Loop en spring naar de vlag aan het einde van het level.", "📱 Knoppen ◀ ▶ lopen, tik om te springen.", "⌨️ ◀ ▶ lopen, ⬆ of spatie springen.", "💡 Kort tikken = lage sprong. Spring op vijanden om ze te verslaan."], "bubble": ["🎯 Schiet bellen en maak groepjes van 3 of meer van dezelfde kleur om ze te laten knallen.", "📱 Sleep om te mikken, loslaten = schieten; tik op de volgende bel om te wisselen.", "⌨️ ◀ ▶ mikken, spatie schieten, ↓ wisselen.", "💡 Kaats tegen de muur om moeilijke plekjes te bereiken."], "towerdef": ["🎯 Houd de vijanden tegen voor ze het einde van het pad halen.", "📱 Kies onderaan een toren en tik op het gras; tik op een toren om te verbeteren of te verkopen.", "⌨️ 1–4 kies toren, pijltjes + spatie plaatsen, u/v verbeteren/verkopen, n = volgende golf, f = sneller.", "💡 Zet torens in de bochten; daar schieten ze het langst."], "fruit": ["🎯 Snijd zoveel mogelijk fruit door.", "📱 Veeg snel over het fruit.", "⌨️ Sleep met de muis over het fruit.", "💣 Raak geen bommen; 3 fruit gemist = game over."], "piano": ["🎯 Tik alleen op de zwarte tegels en mis er geen.", "📱 Tik op de onderste zwarte tegel.", "⌨️ Toetsen D F J K of 1–4.", "💡 Het tempo gaat omhoog; een witte tegel raken = einde."], "cookie": ["🎯 Bak zoveel mogelijk koekjes.", "📱 Tik op het grote koekje.", "⌨️ Klik op het koekje.", "🏭 Koop oma’s en fabrieken: die bakken koekjes per seconde.", "💡 Je voortgang wordt bewaard, ook als je weggaat."], "flood": ["🎯 Maak het hele bord één kleur in zo weinig zetten mogelijk.", "📱 Tik op een kleur: het vlak linksboven neemt die kleur aan.", "⌨️ Toetsen 1–6.", "💡 Kies de kleur die het grootste stuk aan je vlak vastmaakt."], "mahjong": ["🎯 Haal alle stenen weg door gelijke paren te maken.", "📱 Tik op twee gelijke vrije stenen (niets erop, links óf rechts vrij).", "⌨️ ←→ + spatie kiezen, h = hint, s = schudden, u = terug.", "💡 Haal eerst stenen weg die andere stenen blokkeren."], "kleurbal": ["🎯 Sorteer de ballen zodat elke buis maar één kleur heeft.", "📱 Tik op een buis en dan op een andere.", "⌨️ ←→ + spatie, u = terug, h = hint.", "💡 Een bal mag alleen op dezelfde kleur of in een lege buis."], "sudoku": ["🎯 Vul het rooster zodat elk cijfer 1–9 één keer voorkomt in elke rij, kolom en 3×3-blok.", "📱 Tik op een vakje en daarna op een cijfer.", "⌨️ Pijltjes + cijfers 1–9, Backspace wist, N = notities, H = hint.", "💡 Zoek eerst rijen of blokken waar nog maar één cijfer ontbreekt."], "match3": ["🎯 Wissel juwelen om 3 of meer op een rij te maken.", "📱 Tik op twee buursteentjes of veeg om te wisselen.", "⌨️ Pijltjes + spatie.", "💡 Combinaties van 4 of 5 leveren extra punten op."], "sokoban": ["🎯 Duw alle kisten 📦 op de doelen.", "📱 Veeg of tik in de richting waarin je wilt lopen.", "⌨️ Pijltjes of WASD, Z = ongedaan maken, R = opnieuw.", "💡 Je kunt alleen duwen, niet trekken: duw geen kist in een hoek."], "mastermind": ["🎯 Kraak de geheime kleurcode.", "📱 Tik op kleuren om de rij te vullen en dan op ✔.", "⌨️ Toetsen 1–6, Backspace, Enter.", "⚫ = goede kleur op de juiste plek, ⚪ = goede kleur op een verkeerde plek.", "💡 Gebruik je eerste pogingen om uit te zoeken welke kleuren erin zitten."], "nonogram": ["🎯 Kleur de juiste vakjes in zodat er een tekening verschijnt.", "📱 Tik of sleep om vakjes te vullen; ⬛/✖ wisselt de modus.", "⌨️ Pijltjes + spatie vullen, X = zeker leeg, rechtermuisknop = ✖.", "💡 De getallen tonen hoeveel gevulde vakjes er na elkaar in die rij of kolom staan."], "woordzoeker": ["🎯 Vind alle woorden in het letterrooster.", "📱 Sleep over een woord, of tik op de eerste en de laatste letter.", "⌨️ Sleep met de muis over het woord.", "💡 Woorden staan horizontaal, verticaal of schuin."], "quiz": ["🎯 Beantwoord zoveel mogelijk vragen juist.", "📱 Tik op een antwoord.", "⌨️ Toetsen 1–4 kiezen, Enter = volgende vraag.", "💡 Twijfel je? Streep eerst de antwoorden weg die zeker fout zijn."], "chess": ["🎯 Zet de koning van de computer schaakmat.", "📱 Tik op een stuk en daarna op het doelvak.", "⌨️ Klik op een stuk en daarna op het doelvak.", "♙ Jij speelt wit en begint.", "💡 Breng eerst je paarden en lopers naar het midden en rokeer vroeg."], "connect4": ["🎯 Leg als eerste vier schijven op een rij (ook schuin).", "📱 Tik op een kolom om een schijf te laten vallen.", "⌨️ Toetsen 1–7, of ◀ ▶ en spatie.", "💡 Het midden is de sterkste kolom."], "checkers": ["🎯 Sla alle stukken van de tegenstander of zet hem vast.", "📱 Tik op een schijf en dan op een vakje.", "⌨️ Klik op een schijf en dan op een vakje.", "⚠️ Slaan is verplicht (met de meeste stukken). Een dam mag over meerdere vakjes vliegen."], "othello": ["🎯 Heb op het einde de meeste schijven van jouw kleur.", "📱 Tik op een stip om een schijf te leggen.", "⌨️ Klik op een stip.", "🔄 Schijven die je insluit, draaien om naar jouw kleur.", "💡 Hoeken kunnen nooit meer omgedraaid worden: probeer ze te pakken."], "battleship": ["🎯 Laat alle schepen van de computer zinken voor hij de jouwe vindt.", "📱 Schud je vloot tot je tevreden bent en tik op ⚓ Start; tik daarna in de vijandelijke wateren om te vuren.", "⌨️ Klik op een vak om te vuren.", "💡 Na een treffer: schiet ernaast om de richting van het schip te vinden."], "blackjack": ["🎯 Kom dichter bij 21 dan de dealer zonder erover te gaan.", "📱 Gebruik de knoppen: kaart, passen, verdubbelen, delen.", "⌨️ h = kaart, s = passen, d = verdubbelen, spatie = delen.", "💡 Blackjack betaalt 3:2; de dealer past vanaf 17."], "solitaire": ["🎯 Leg alle kaarten per kleur op volgorde (aas tot heer) op de fundamenten.", "📱 Tik op een kaart (of reeks) en dan op het doel; tik op de voorraad om te trekken.", "⌨️ Klik op kaarten, spatie = trekken, u = ongedaan maken.", "💡 Tik nog eens op een gekozen kaart om ze naar een fundament te sturen."], "dots": ["🎯 Sluit de meeste hokjes.", "📱 Tik tussen twee stippen om een lijn te trekken.", "⌨️ Klik tussen twee stippen.", "💡 Wie een hokje sluit, mag nog eens. Geef je tegenstander geen derde zijde cadeau."], "yahtzee": ["🎯 Haal de hoogste score in 13 beurten.", "📱 Gooi, tik op dobbelstenen om ze vast te houden en tik op een rij om te scoren.", "⌨️ Spatie = gooien, 1–5 = vasthouden.", "💡 Je mag 3× gooien per beurt. Haal 63 in het bovenste deel voor 35 bonuspunten."] }, "mp": { "blokkenland": ["🎯 Bouw samen in dezelfde blokkenwereld.", "📱 Links slepen = lopen, rechts slepen = kijken, ⛏️ breken, 🧱 plaatsen, ⤒ springen (2× = vliegen).", "⌨️ WASD lopen, muis kijken, klik/X breken, rechtsklik/C plaatsen, 1–9 kiezen, spatie springen, F vliegen.", "💡 De wereld leeft bij de host: wie later meedoet, ziet alles wat al gebouwd is."], "ttt": ["🎯 Zet als eerste drie op een rij.", "📱 Tik op een leeg vakje als je aan de beurt bent.", "⌨️ Klik op een vakje.", "💡 De verliezer begint de volgende ronde."], "connect4": ["🎯 Leg als eerste vier schijven op een rij (ook schuin).", "📱 Tik op een kolom als je aan de beurt bent.", "⌨️ Toetsen 1–7, of ◀ ▶ en spatie.", "💡 Bouw dreigingen op twee plaatsen tegelijk."], "checkers": ["🎯 Sla alle stukken van je tegenstander of zet hem vast.", "📱 Tik op een schijf en dan op een vakje.", "⌨️ Klik op een schijf en dan op een vakje.", "⚠️ Slaan is verplicht (met de meeste stukken); dammen vliegen."], "othello": ["🎯 Heb op het einde de meeste schijven van jouw kleur.", "📱 Tik op een stip om een schijf te leggen.", "⌨️ Klik op een stip.", "💡 Hoeken zijn goud waard: die kunnen niet meer omgedraaid worden."], "battleship": ["🎯 Laat alle schepen van je tegenstander zinken.", "📱 Zet je vloot neer (🔀 Schud of 🔁 Draaien) en tik op ✅ Klaar; tik daarna op zijn water om te vuren.", "⌨️ Klik om schepen te plaatsen en om te vuren.", "💡 Na een treffer: schiet ernaast om de richting te vinden."], "chess": ["🎯 Zet de koning van je tegenstander schaakmat.", "📱 Tik op een stuk en daarna op het doelvak.", "⌨️ Klik op een stuk en daarna op het doelvak.", "🏳️ Opgeven kan met de knop onder het bord."], "dots": ["🎯 Sluit de meeste hokjes.", "📱 Tik tussen twee stippen om een lijn te trekken.", "⌨️ Klik tussen twee stippen.", "💡 Wie een hokje sluit, mag nog eens."], "pong": ["🎯 Speel de bal langs je tegenstander; eerste tot 7 wint.", "📱 Sleep op het speelveld of gebruik de knoppen ▲ ▼.", "⌨️ ▲ ▼.", "💡 Raak de bal met de rand van je peddel voor een scherpe hoek."], "tanks": ["🎯 Raak de andere tank 5 keer.", "📱 Knoppen ↺ ↻ draaien, ▲ ▼ rijden, 🔥 schieten.", "⌨️ Pijltjes of WASD, spatie = schieten.", "💡 Kogels stuiteren één keer tegen de muur: schiet om de hoek!"], "flight": ["🎯 Vlieg samen rond, land op vliegvelden en het vliegdekschip, race door ringen of vecht in de lucht.", "📱 Knoppen voor rollen, neus op/neer, gas, vuren, raketten, flares en landingsgestel.", "⌨️ Klik in het beeld en stuur met de muis · Z/S neus omlaag/omhoog · Q/D rollen · A/E roer · Shift/Ctrl gas · G landingsgestel · B remmen · C camera · Esc menu.", "💡 Opstijgen: vol gas en optrekken boven de startsnelheid. Landen: gas terug, landingsgestel uit, rustig dalen met de vleugels recht."], "bbox": ["🎯 5 levels: elke keer zit je in een grotere kartonnen doos vol knoppen (3D, door je eigen ogen). Eén knop geeft de 🔑 sleutel, een andere opent de 🚪 uitgang in het plafond.", "⌨️ WASD/ZQSD of pijltjes = lopen · klik in de doos en kijk met de muis · klik of E = indrukken/oppakken · spatie = springen · bij de touwladder spatie/W = klimmen.", "🦆 Alles wat de grapknoppen laten verschijnen is echt 3D en interactief: klik = het reageert (ballon knalt, kat miauwt, spook verdwijnt, pizza opeten…), loop ertegen = schoppen, R = vastpakken en gooien — ook naar andere spelers!", "🎒 Items: zaklamp, springschoenen, skateboard, vergrootglas (echte knoppen fonkelen) en ballon (zweven). G = laten vallen. Vanaf level 4 is het donker!", "🤝 Samen: F = iemand duwen, 1-6 = emoji. De speler met de sleutel ontgrendelt het luik. ⏱️ Je totale tijd telt — verbreek je record!"], "kart": ["🎯 Race 3 rondes tegen de anderen (of tegen de computer) en kom als eerste over de finish.", "⌨️ W/↑ = gas · S/↓ = remmen/achteruit · A D / ← → = sturen · spatie of E = item gebruiken.", "❓ Rij door de gele blokken voor een item: 🍌 banaan (achter je), 🚀 raket (op wie voor je rijdt), 🛡️ schild, ⚡ turbo of 🛢️ olie.", "🌱 Naast de weg rij je veel trager — blijf op het asfalt!"], "hide": ["🎯 Kies Klassiek of Prop hunt. Eén speler zoekt: die telt 20 s met een zwart scherm terwijl de rest zich verstopt in het grote huis (6 kamers, kasten, tuin met schuur en hagen).", "⌨️ WASD/pijltjes = lopen · Shift = rennen · sleep = rondkijken · scrollwiel = zoomen (helemaal in = eerste persoon).", "🏠 Klassiek: de zoeker loopt naar je toe en drukt E of klikt = gevonden. Wie gevonden is zoekt mee!", "📦 Prop hunt: ga naast een voorwerp staan en druk E om erin te veranderen (Q = ander voorwerp, R = draaien). Blijf stil! De zoeker klikt op verdachte voorwerpen — fout = −4 s.", "⏱️ Een ronde duurt 3 minuten. Niet gevonden = 5 punten."], "stadspel": ["🎲 Gooi de dobbelstenen en koop straten waar je op landt; wie op jouw straat komt, betaalt huur.", "🏠 Heb je een hele kleurgroep, dan verdubbelt de huur en mag je huizen (max 3) en een winkelcentrum bouwen.", "🤝 Tik op een straat van een ander om een bod te doen; Kans-kaarten en de Strafbank zorgen voor verrassingen.", "🏆 Na 20 rondes wint wie het rijkst is (geld + bezit); wie niet kan betalen, gaat failliet."], "maker": ["🛠️ Bouw je eigen level: kies een tegel en klik of sleep in het raster (rechtermuisknop = gummen, Ctrl+Z = ongedaan).", "▶️ Zet een Start en een Finish, en druk op ▶ Test om je level te spelen (Esc = terug naar de editor).", "⌨️ Lopen met ←/→, springen met spatie of ↑. Spring op vijanden, pak munten en de sleutel voor de deur; vlaggen zijn checkpoints.", "🔗 Met Deel krijg je een code voor vrienden, of publiceer je je level online; bij Ontdek levels speel je de levels van anderen."], "mens": ["🎲 Gooi een 6 om een pion op het bord te zetten; met een 6 mag je nog eens.", "👆 Tik op een oplichtende pion om te zetten; land je op een ander, dan gaat die terug naar zijn hok.", "🔁 Zonder pionnen op het bord heb je 3 pogingen om een 6 te gooien.", "🏠 Breng als eerste alle 4 pionnen precies thuis."], "ganzenbord": ["🎲 Gooi twee dobbelstenen en loop vooruit; als eerste precies op 63 wint, te veel = terugkaatsen.", "🪿 Gans: nog eens zo ver. 🌉 6→12, 🌀 42→39, 💀 58 terug naar start.", "🍺 Herberg (19): één beurt overslaan. 🕳️ Put (31) en 🔒 gevangenis (52): wachten tot een ander je komt bevrijden.", "✨ Optioneel: eerste worp 6+3 → 26, 5+4 → 53."], "obby": ["🎯 Ren, spring en klim door 4 fases boven een zee van lava naar de finish.", "⌨️ WASD/pijltjes = lopen, Spatie = springen; sleep om de camera te draaien, scroll om te zoomen.", "🚩 Vallen of lava = terug naar je laatste checkpoint. Pak bij checkpoint 2 de ✨ dubbele sprong!", "👻 Online wint wie het eerst over de finish is; solo race je tegen je eigen beste tijd."], "zombie": ["🧟 Overleef zo veel mogelijk zombiegolven op het dorpsplein; elke 5e golf komt er een baas-zombie!", "⌨️ Lopen met WASD/pijltjes, mikken met de muis en klikken om te schieten (spatie of 🔫 = automatisch mikken).", "🪙 Verzamel muntjes en koop tussen de golven een shotgun, blaster, medkit of barricade.", "🤝 Ben je neer? Een maatje redt je door naast je te staan. Score = golven × 100 + zombies."], "golf3d": ["⛳ Sleep vanaf het veld naar achteren en laat los om te slaan: hoe verder je sleept, hoe harder.", "⌨️ Of houd spatie / ⛳ ingedrukt en laat los; je slaat in de kijkrichting van de camera (draaien met ← → of ⟲ ⟳).", "💧 Water of van de baan vallen = +1 strafslag; maximaal 8 slagen per hole.", "🏆 Iedereen speelt tegelijk dezelfde hole; de laagste totaalscore na 9 holes wint."], "bowling": ["↔️ Kies je positie met ← → en je effect (curve) met ↑ ↓.", "🎳 Druk op spatie of 🎳 om de krachtmeter te starten en druk nog eens om te gooien — of veeg omhoog over de baan.", "⭐ Strike = 10 + de volgende 2 ballen, spare = 10 + de volgende bal.", "🏆 Na 10 frames wint de hoogste score; online gooit iedereen om de beurt een frame."], "keuken": ["🍅 Pak ingrediënten uit de kratten, snijd ze op de snijplank (houd E ingedrukt) en bak ze in de pan of oven.", "🛎️ Leg alles op een schoon bord en breng het naar het serveerluik vóór de bon verloopt — snel = fooi!", "🔥 Laat niets te lang staan: verbrand eten vat vuur, blus het met de rode blusser (houd E).", "🧽 Was vuile borden af bij de gootsteen en werk samen voor 3 sterren."], "paintball": ["🚩 Kies een modus: Vlag veroveren (pak de vijandelijke vlag en breng hem naar je basis, eerst 3) of 🎯 Teamdeathmatch (eerst 25 treffers).", "⌨️ WASD/pijltjes = lopen, muis = richten, klik = schieten, spatie = springen, Shift = sprinten, R = herladen.", "📱 Op je telefoon: knoppen om te lopen, sleep om rond te kijken, 🎯 schiet en richt vanzelf.", "🎨 Geraakt? Dan ben je 4 seconden uit en kom je terug bij je basis."], "overleef": ["🔺 Overleef vier speelplaatsspelletjes na elkaar: Rood licht groen licht, Touwtrekken, Glazen brug en Stoelendans.", "🚦 Loop met ▲ als de robot wegkijkt en sta stil bij rood. Bij touwtrekken druk je snel op Spatie (in het groen telt dubbel).", "🌉 Op de brug kies je ◀ of ▶. Bij de stoelendans druk je op Spatie zodra de muziek stopt.", "🎉 Wie afvalt, verdwijnt met een confetti-poef en kijkt mee. Wie als laatste overblijft, wint!"], "bommen": ["💣 Loop met de pijltjes/WASD en leg met spatie (of 💣) een bom.", "🎁 Blaas kratten op voor power-ups: 💣 meer bommen, 🔥 groter vuur, 👟 sneller, 🦶 bommen wegschoppen, 🛡️ schild.", "💥 Ontploffingen zetten andere bommen af; na 90 seconden krimpt de arena.", "🏆 Wie als laatste overblijft wint de ronde; wie eerst 2 rondes wint, wint het spel."], "boxing": ["🎯 Raak je tegenstander zo vaak mogelijk: jab = 1 punt, hoek = 2, uppercut = 3. Eerste tot 20 punten of een knock-out wint.", "⌨️ → naar de tegenstander, ← achteruit, ↓ afweren · linkermuisknop/rechtermuisknop = linkse/rechtse jab · A/E hoeken · W/C uppercuts (zelf aan te passen met ⌨️ Toetsen instellen).", "🛡️ Afweren houdt jabs en hoeken bijna helemaal tegen, maar een uppercut komt er half door.", "📱 Op een gsm gebruik je de knoppen onder de ring."], "avia": ["🎯 Kies je inzet in virtuele munten en druk op Doe mee; de host start de ronde en iedereen vliegt dezelfde route: het vliegtuigje stijgt op van het vliegdekschip en vliegt vanzelf.", "🪙 Elk token dat je raakt telt op of vermenigvuldigt én duwt het vliegtuig omhoog; mis je ze, dan zakt het. Een raket halveert je score en duwt je omlaag, een onweerswolk beëindigt de vlucht.", "🛬 Zakt het vliegtuig tot boven het water, dan zoekt het een landingsplek: vliegdekschip, eiland, booreiland, vliegveld, vrachtschip, ponton, helikopterplatform of een klein vlot. Meestal lukt dat (je krijgt je rondescore als munten), soms plonst het in zee en ben je je inzet kwijt.", "⚙️ Snelheid, startmunten, tokenwaarden en kansen stel je in via ⚙️. Munten zijn alleen virtueel en niets waard."], "race": ["🎯 Rij als eerste 3 ronden rond de baan.", "📱 Gebruik ◀ ▶ om te sturen en 🔺 Gas / 🔻 Rem.", "⌨️ Z of ↑ gas · S of ↓ rem · Q/D of ←/→ sturen.", "💡 Gele pijlen geven een boost, gras remt je af en de vangrail kaatst je terug."], "dday": ["🎯 Speel met je team: verover punten, win het teamgevecht, steel de vlag of overleef de zombies.", "📱 Joystick om te lopen, sleep om te kijken, knoppen voor schieten, richten, healen en meer.", "⌨️ Z/Q/S/D lopen · muis kijken · klik schieten · rechtsklik richten · spatie springen · W hurken · T voertuig · Tab scorebord.", "💡 Kies in het menu (Esc) je klasse, de spelmodus, de map en de moeilijkheid van de bots."], "tron": ["🎯 Blijf het langst rijden zonder ergens tegenaan te botsen.", "📱 Veeg op het veld of gebruik de knoppen om af te slaan.", "⌨️ Pijltjes of WASD.", "💡 Laatste die rijdt wint de ronde; 3 rondes winnen = spel gewonnen."], "hockey": ["🎯 Schiet de puck in het doel van je tegenstander; eerste tot 5 wint.", "📱 Sleep je schijf in de onderste helft.", "⌨️ Pijltjes, of sleep met de muis.", "💡 Kaats via de zijkant om langs de verdediging te komen."], "snakeduel": ["🎯 Wees de laatste slang die overleeft.", "📱 Veeg op het bord of gebruik de knoppen.", "⌨️ Pijltjes of WASD.", "🍎 Eet appels om te groeien; bots nergens tegen.", "💡 3 rondes winnen = spel gewonnen."], "quiz": ["🎯 Geef zo snel mogelijk het juiste antwoord.", "📱 Tik op een antwoord.", "⌨️ Toetsen 1–4.", "💡 Het snelste juiste antwoord krijgt 100 punten."], "draw": ["🎯 Teken het woord zodat de anderen het raden, of raad wat de tekenaar maakt.", "📱 Teken met je vinger; raders typen hun gok en tikken op Enter.", "⌨️ Teken met de muis; typ je gok en druk op Enter.", "💡 Sneller raden = meer punten, voor de rader én de tekenaar."], "words": ["🎯 Vorm zoveel mogelijk woorden van minstens 3 letters uit de 9 letters.", "📱 Typ een woord en tik op Enter of toevoegen.", "⌨️ Typ en druk op Enter.", "💡 Elke letter zo vaak als hij voorkomt; langere woorden geven meer punten."], "yahtzee": ["🎯 Haal samen 13 beurten lang de hoogste score.", "📱 Gooi, tik op dobbelstenen om ze vast te houden en tik op een rij in jouw kolom.", "⌨️ Spatie = gooien, 1–5 = vasthouden.", "💡 63 punten in het bovenste deel = 35 bonuspunten."], "weerwolven": ["🎯 Burgers: ontmasker de weerwolven. Weerwolven: blijf onopgemerkt.", "📱 Bekijk je rolkaart (tik om ze te verbergen) en tik op een speler om te kiezen.", "⌨️ Klik op een speler om te kiezen.", "🌙 ’s Nachts kiezen de wolven een slachtoffer, overdag stemt het dorp.", "💡 Praat met elkaar (in het echt of via de chat) voor je stemt."], "spionnen": ["🎯 Vind als team al je geheime woorden voor de andere ploeg.", "📱 Spionmeesters geven een hint: één woord + een aantal.", "⌨️ Teamleden klikken op de woorden die bij de hint passen.", "💀 Tik nooit op de moordenaar — dan verlies je meteen."], "jeopardy": ["🎯 Verdien de meeste punten met juiste antwoorden.", "📱 Wie aan de beurt is, kiest een vakje; iedereen buzzt met de knop.", "⌨️ Spatie = buzzen, 1–4 = antwoord kiezen.", "💡 Fout geantwoord kost punten: buzz alleen als je het (bijna) zeker weet."], "stadland": ["🎯 Vul per categorie een woord in dat met de letter begint.", "📱 Tik in de vakjes en typ; tik op ✋ STOP! als alles ingevuld is.", "⌨️ Typ en spring met Tab naar het volgende vak.", "🗳️ Stem ✗ op foute antwoorden. Uniek = 10 pt, dubbel = 5 pt."], "bluf": ["🎯 Bied hoeveel stenen van een waarde er in totaal liggen, of roep Bluf!", "📱 Kies aantal en waarde en tik op bieden, of op Bluf!", "⌨️ ↑↓ aantal, 1–6 waarde, Enter bieden, B = bluf.", "💡 Enen zijn joker. Wie fout zit, verliest een steen."], "kleurkaart": ["🎯 Raak als eerste al je kaarten kwijt.", "📱 Tik op een kaart met dezelfde kleur, hetzelfde getal of symbool.", "⌨️ ←/→ kiezen, Enter spelen, D pakken/passen, L = laatste kaart.", "💡 Vergeet niet “laatste kaart” te melden!"], "pesten": ["🎯 Raak als eerste al je kaarten kwijt.", "📱 Tik op een kaart van dezelfde kleur of waarde.", "⌨️ ←/→ kiezen, Enter spelen, D pakken, L = laatste kaart.", "🃏 2 = pak 2, joker = pak 5, 7 blijft, 8 slaat over, heer nog eens, aas draait om, boer kiest kleur.", "💡 Je mag niet eindigen op een pestkaart."], "drawteams": ["🎯 Teken voor je team en raad wat je teamgenoot tekent.", "📱 Teken met je vinger; alleen je eigen team raadt (typ + Enter).", "⌨️ Teken met de muis; typ je gok en druk op Enter.", "💡 Binnen 20 seconden geraden = bonuspunt."], "sudoku": ["🎯 Vul samen het sudokurooster in.", "📱 Tik op een vakje en daarna op een cijfer.", "⌨️ Pijltjes + cijfers 1–9, Backspace wist, H = hint.", "💡 Juiste cijfers krijgen de kleur van de speler die ze vond."], "mines": ["🎯 Open samen alle veilige vakjes zonder op een mijn te stappen.", "📱 Tik = graven, lang drukken of vlag-modus = 🚩.", "⌨️ Klik = graven, rechtsklik = vlag, F wisselt modus.", "💡 Tik op een cijfer met genoeg vlaggen om alle buren te openen."], "woordzoeker": ["🎯 Vind de meeste woorden in het gedeelde rooster.", "📱 Sleep over een woord, of tik op de eerste en de laatste letter.", "⌨️ Sleep met de muis over het woord.", "💡 Woorden staan ook schuin; wie het eerst vindt, krijgt het punt."] } };
+  const HOWTO = { "dday": ["🎯 Aanvallers veroveren de vier controlepunten in volgorde; verdedigers houden de posities tot de timer afloopt.", "🟦 De landingsboten brengen aanvallers vanaf het transportschip naar het strand. Betwist een zone door erin te staan.", "📱 Gebruik de pijltjesknoppen om te lopen, sleep op het beeld om te richten en houd 🔥 vast om te schieten.", "⌨️ WASD / pijltjes lopen, muis richten en F schieten, R herladen, 1–5 wisselen, G granaat, spatie sprint.", "🤖 Ontbrekende plaatsen in de 4-tegen-4-match worden automatisch met bots gevuld; ze zoeken dekking en verdedigen of bestormen het actieve doel."], "solo": { "2048": ["🎯 Schuif de tegels zodat gelijke getallen samensmelten en haal de tegel 2048.", "📱 Veeg in een richting om alle tegels te schuiven.", "⌨️ Pijltjes of WASD.", "💡 Houd je grootste tegel in een hoek en vul de rij ernaast."], "wordle": ["🎯 Raad het geheime woord van 5 letters in 6 pogingen.", "📱 Tik de letters op het toetsenbord onder het rooster en daarna op Enter.", "⌨️ Typ het woord en druk op Enter; Backspace wist een letter.", "🟩 Groen = juiste letter op de juiste plek, 🟨 geel = letter zit erin maar op een andere plek, grijs = zit er niet in.", "💡 Begin met een woord met veel verschillende klinkers."], "snake": ["🎯 Eet zoveel mogelijk appels zonder tegen jezelf of de muur te botsen.", "📱 Veeg over het speelveld om van richting te veranderen.", "⌨️ Pijltjes of WASD om te sturen.", "⭐ Een ster is 5 punten waard; elke appel maakt je sneller.", "💡 Blijf langs de randen draaien als je slang lang wordt."], "memory": ["🎯 Vind alle paren zo snel en met zo weinig beurten mogelijk.", "📱 Tik op twee kaarten om ze om te draaien.", "⌨️ Klik met de muis op de kaarten.", "💡 Onthoud waar je elke kaart al gezien hebt, ook als ze niet passen."], "ttt": ["🎯 Zet drie ❌ op een rij — horizontaal, verticaal of schuin — voor de computer ⭕ dat doet.", "📱 Tik op een leeg vak.", "⌨️ Pijltjes + spatie of de toetsen 1–9.", "💡 Neem het midden of een hoek en blokkeer twee-op-een-rij van de tegenstander."], "mines": ["🎯 Open alle vakjes zonder op een mijn te stappen.", "📱 Tik = graven, lang drukken of de 🚩-knop = vlag zetten.", "⌨️ Klik = graven, rechtsklik = vlag; of pijltjes + spatie en F.", "🔢 Een cijfer zegt hoeveel mijnen er rond dat vakje liggen.", "💡 Tik op een cijfer met genoeg vlaggen eromheen om alle buren in één keer te openen."], "flappy": ["🎯 Vlieg zo ver mogelijk tussen de buizen door.", "📱 Tik op het scherm om te fladderen.", "⌨️ Spatie of ▲.", "🏅 Medailles bij 10, 20, 30 en 50 punten.", "💡 Korte, rustige tikjes werken beter dan veel tegelijk."], "simon": ["🎯 Herhaal de kleurenreeks die steeds een stapje langer wordt.", "📱 Tik op de kleuren in dezelfde volgorde.", "⌨️ Toetsen 1–4 of Q W A S.", "💡 Zeg de kleuren zachtjes mee; het tempo gaat omhoog."], "mole": ["🎯 Mep zoveel mogelijk mollen voor de tijd op is.", "📱 Tik op een mol zodra hij opduikt.", "⌨️ Toetsen 1–9 (numpad) of Q W E / A S D / Z X C.", "🌟 Een gouden mol is +5; mis je, dan gaat er 1 punt af."], "tetris": ["🎯 Maak volle rijen met de vallende blokken; elke volle rij verdwijnt.", "📱 Tik = draaien, sleep = schuiven, veeg omlaag = laten vallen.", "⌨️ ← → schuiven, ↑/X draaien, Z terugdraaien, ↓ zacht, spatie = vallen, C = vasthouden, P = pauze.", "💡 Laat één kolom open voor een lang blok en ruim 4 rijen tegelijk op."], "breakout": ["🎯 Breek alle blokken met de bal zonder hem te laten vallen.", "📱 Sleep om de peddel te bewegen, tik om de bal te lanceren.", "⌨️ ◀ ▶ = peddel, spatie = lanceren.", "🎁 Vang power-ups: ↔ breed, ●● multibal, 🐢 traag, ❤ extra leven.", "💡 Raak de bal met de rand van de peddel voor een scherpere hoek."], "pong": ["🎯 Speel de bal langs de computer; wie eerst 7 punten heeft, wint.", "📱 Sleep op het speelveld om je peddel te bewegen.", "⌨️ ▲ ▼ of W S.", "💡 Raak de bal met de rand van je peddel voor een scherpe hoek."], "galgje": ["🎯 Raad het woord letter voor letter voor het galgje af is.", "📱 Tik op de letters op het scherm.", "⌨️ Typ letters op je toetsenbord.", "💡 Na 8 fouten hang je; begin met veelvoorkomende letters zoals E, N en A."], "slide": ["🎯 Zet alle tegels op volgorde met het lege vak rechtsonder.", "📱 Tik op een tegel naast (of in lijn met) het gat, of veeg.", "⌨️ Pijltjes.", "💡 Los eerst de bovenste rij op, dan de linker kolom, en zo verder."], "lights": ["🎯 Doe alle lampen uit.", "📱 Tik op een lamp: die en zijn buren schakelen om.", "⌨️ Pijltjes + spatie.", "💡 Werk rij per rij: tik onder elke brandende lamp in de rij erboven."], "react": ["🎯 Meet je reactiesnelheid: hoe sneller, hoe beter.", "📱 Tik zodra het vlak groen wordt — niet eerder!", "⌨️ Spatie of klikken.", "📊 Je doet 5 pogingen; je gemiddelde telt."], "blokkenland": ["🎯 Bouw, ontdek en overleef in een blokkenwereld (Creatief of Overleven).", "📱 Links slepen = lopen, rechts slepen = kijken, ⛏️ ingedrukt = breken, 🧱 = plaatsen, ⤒ = springen.", "⌨️ WASD lopen, muis/slepen kijken, klik/X breken, rechtsklik/C plaatsen, 1–9 of wiel = blok kiezen, spatie springen, E = blokken.", "✈️ In Creatief: 2× springen of F = vliegen.", "💡 Je wereld wordt bewaard op dit toestel."], "runner3d": ["🎯 Ren zo ver mogelijk en ontwijk de obstakels.", "📱 Veeg links/rechts = baan wisselen, omhoog vegen = springen.", "⌨️ ◀ ▶ baan wisselen, ▲ of spatie springen.", "💡 Kijk vooruit en wissel op tijd van baan; het gaat steeds sneller."], "helix": ["🎯 Laat de bal door de gaten van de toren naar beneden vallen.", "📱 Sleep links/rechts om de toren te draaien.", "⌨️ ◀ ▶.", "🟥 Raak je een rood stuk, dan ben je af.", "💡 Val door 3 ringen in één keer voor een 🔥 smash die zelfs rood breekt."], "stack3d": ["🎯 Stapel de blokken zo hoog mogelijk.", "📱 Tik om het bewegende blok neer te zetten.", "⌨️ Spatie.", "💡 Wat uitsteekt, valt eraf. 3× perfect op elkaar laat het blok weer groeien."], "ball3d": ["🎯 Rol de bal over het veld en pak alle 8 💎.", "📱 Sleep over het veld om de bal te duwen.", "⌨️ Pijltjes ◀ ▲ ▼ ▶.", "💡 Rem op tijd af: val niet in de gaten."], "bbox": ["🎯 5 levels: elke keer zit je in een grotere kartonnen doos vol knoppen (3D, door je eigen ogen). Eén knop geeft de 🔑 sleutel, een andere opent de 🚪 uitgang in het plafond.", "⌨️ WASD/ZQSD of pijltjes = lopen · klik in de doos en kijk met de muis · klik of E = indrukken/oppakken · spatie = springen · bij de touwladder spatie/W = klimmen.", "🦆 Alles wat de grapknoppen laten verschijnen is echt 3D en interactief: klik = het reageert (ballon knalt, kat miauwt, spook verdwijnt, pizza opeten…), loop ertegen = schoppen, R = vastpakken en gooien — ook naar andere spelers!", "🎒 Items: zaklamp, springschoenen, skateboard, vergrootglas (echte knoppen fonkelen) en ballon (zweven). G = laten vallen. Vanaf level 4 is het donker!", "🤝 Samen: F = iemand duwen, 1-6 = emoji. De speler met de sleutel ontgrendelt het luik. ⏱️ Je totale tijd telt — verbreek je record!"], "kart": ["🎯 Race 3 rondes tegen de anderen (of tegen de computer) en kom als eerste over de finish.", "⌨️ W/↑ = gas · S/↓ = remmen/achteruit · A D / ← → = sturen · spatie of E = item gebruiken.", "❓ Rij door de gele blokken voor een item: 🍌 banaan (achter je), 🚀 raket (op wie voor je rijdt), 🛡️ schild, ⚡ turbo of 🛢️ olie.", "🌱 Naast de weg rij je veel trager — blijf op het asfalt!"], "hide": ["🎯 Kies Klassiek of Prop hunt. Eén speler zoekt: die telt 20 s met een zwart scherm terwijl de rest zich verstopt in het grote huis (6 kamers, kasten, tuin met schuur en hagen).", "⌨️ WASD/pijltjes = lopen · Shift = rennen · sleep = rondkijken · scrollwiel = zoomen (helemaal in = eerste persoon).", "🏠 Klassiek: de zoeker loopt naar je toe en drukt E of klikt = gevonden. Wie gevonden is zoekt mee!", "📦 Prop hunt: ga naast een voorwerp staan en druk E om erin te veranderen (Q = ander voorwerp, R = draaien). Blijf stil! De zoeker klikt op verdachte voorwerpen — fout = −4 s.", "⏱️ Een ronde duurt 3 minuten. Niet gevonden = 5 punten."], "stadspel": ["🎲 Gooi de dobbelstenen en koop straten waar je op landt; wie op jouw straat komt, betaalt huur.", "🏠 Heb je een hele kleurgroep, dan verdubbelt de huur en mag je huizen (max 3) en een winkelcentrum bouwen.", "🤝 Tik op een straat van een ander om een bod te doen; Kans-kaarten en de Strafbank zorgen voor verrassingen.", "🏆 Na 20 rondes wint wie het rijkst is (geld + bezit); wie niet kan betalen, gaat failliet."], "maker": ["🛠️ Bouw je eigen level: kies een tegel en klik of sleep in het raster (rechtermuisknop = gummen, Ctrl+Z = ongedaan).", "▶️ Zet een Start en een Finish, en druk op ▶ Test om je level te spelen (Esc = terug naar de editor).", "⌨️ Lopen met ←/→, springen met spatie of ↑. Spring op vijanden, pak munten en de sleutel voor de deur; vlaggen zijn checkpoints.", "🔗 Met Deel krijg je een code voor vrienden, of publiceer je je level online; bij Ontdek levels speel je de levels van anderen."], "mens": ["🎲 Gooi een 6 om een pion op het bord te zetten; met een 6 mag je nog eens.", "👆 Tik op een oplichtende pion om te zetten; land je op een ander, dan gaat die terug naar zijn hok.", "🔁 Zonder pionnen op het bord heb je 3 pogingen om een 6 te gooien.", "🏠 Breng als eerste alle 4 pionnen precies thuis."], "ganzenbord": ["🎲 Gooi twee dobbelstenen en loop vooruit; als eerste precies op 63 wint, te veel = terugkaatsen.", "🪿 Gans: nog eens zo ver. 🌉 6→12, 🌀 42→39, 💀 58 terug naar start.", "🍺 Herberg (19): één beurt overslaan. 🕳️ Put (31) en 🔒 gevangenis (52): wachten tot een ander je komt bevrijden.", "✨ Optioneel: eerste worp 6+3 → 26, 5+4 → 53."], "obby": ["🎯 Ren, spring en klim door 4 fases boven een zee van lava naar de finish.", "⌨️ WASD/pijltjes = lopen, Spatie = springen; sleep om de camera te draaien, scroll om te zoomen.", "🚩 Vallen of lava = terug naar je laatste checkpoint. Pak bij checkpoint 2 de ✨ dubbele sprong!", "👻 Online wint wie het eerst over de finish is; solo race je tegen je eigen beste tijd."], "zombie": ["🧟 Overleef zo veel mogelijk zombiegolven op het dorpsplein; elke 5e golf komt er een baas-zombie!", "⌨️ Lopen met WASD/pijltjes, mikken met de muis en klikken om te schieten (spatie of 🔫 = automatisch mikken).", "🪙 Verzamel muntjes en koop tussen de golven een shotgun, blaster, medkit of barricade.", "🤝 Ben je neer? Een maatje redt je door naast je te staan. Score = golven × 100 + zombies."], "golf3d": ["⛳ Sleep vanaf het veld naar achteren en laat los om te slaan: hoe verder je sleept, hoe harder.", "⌨️ Of houd spatie / ⛳ ingedrukt en laat los; je slaat in de kijkrichting van de camera (draaien met ← → of ⟲ ⟳).", "💧 Water of van de baan vallen = +1 strafslag; maximaal 8 slagen per hole.", "🏆 Iedereen speelt tegelijk dezelfde hole; de laagste totaalscore na 9 holes wint."], "bowling": ["↔️ Kies je positie met ← → en je effect (curve) met ↑ ↓.", "🎳 Druk op spatie of 🎳 om de krachtmeter te starten en druk nog eens om te gooien — of veeg omhoog over de baan.", "⭐ Strike = 10 + de volgende 2 ballen, spare = 10 + de volgende bal.", "🏆 Na 10 frames wint de hoogste score; online gooit iedereen om de beurt een frame."], "keuken": ["🍅 Pak ingrediënten uit de kratten, snijd ze op de snijplank (houd E ingedrukt) en bak ze in de pan of oven.", "🛎️ Leg alles op een schoon bord en breng het naar het serveerluik vóór de bon verloopt — snel = fooi!", "🔥 Laat niets te lang staan: verbrand eten vat vuur, blus het met de rode blusser (houd E).", "🧽 Was vuile borden af bij de gootsteen en werk samen voor 3 sterren."], "paintball": ["🚩 Kies een modus: Vlag veroveren (pak de vijandelijke vlag en breng hem naar je basis, eerst 3) of 🎯 Teamdeathmatch (eerst 25 treffers).", "⌨️ WASD/pijltjes = lopen, muis = richten, klik = schieten, spatie = springen, Shift = sprinten, R = herladen.", "📱 Op je telefoon: knoppen om te lopen, sleep om rond te kijken, 🎯 schiet en richt vanzelf.", "🎨 Geraakt? Dan ben je 4 seconden uit en kom je terug bij je basis."], "overleef": ["🔺 Overleef vier speelplaatsspelletjes na elkaar: Rood licht groen licht, Touwtrekken, Glazen brug en Stoelendans.", "🚦 Loop met ▲ als de robot wegkijkt en sta stil bij rood. Bij touwtrekken druk je snel op Spatie (in het groen telt dubbel).", "🌉 Op de brug kies je ◀ of ▶. Bij de stoelendans druk je op Spatie zodra de muziek stopt.", "🎉 Wie afvalt, verdwijnt met een confetti-poef en kijkt mee. Wie als laatste overblijft, wint!"], "bommen": ["💣 Loop met de pijltjes/WASD en leg met spatie (of 💣) een bom.", "🎁 Blaas kratten op voor power-ups: 💣 meer bommen, 🔥 groter vuur, 👟 sneller, 🦶 bommen wegschoppen, 🛡️ schild.", "💥 Ontploffingen zetten andere bommen af; na 90 seconden krimpt de arena.", "🏆 Wie als laatste overblijft wint de ronde; wie eerst 2 rondes wint, wint het spel."], "valrace": ["🏃 Val Race is een spelshow in 4 rondes: overleef elke ronde om door te gaan naar de finale.", "🔨 Obstakelrace: ontwijk hamers, muren en wipplanken en haal de finish bij de eersten. Valtegels: tegels vallen na je stap, blijf als laatste staan.", "🦊 Staartjesjacht: tik iemand van achteren aan om zijn staart te pakken; heb je er een op het einde, dan ben je door.", "👑 Finale Kroonklim: klim de toren op en grijp als eerste de kroon. Spatie = springen, E = duiken."], "boxing": ["🎯 Raak je tegenstander zo vaak mogelijk: jab = 1 punt, hoek = 2, uppercut = 3. Eerste tot 20 punten of een knock-out wint.", "⌨️ → naar de tegenstander, ← achteruit, ↓ afweren · linkermuisknop/rechtermuisknop = linkse/rechtse jab · A/E hoeken · W/C uppercuts (zelf aan te passen met ⌨️ Toetsen instellen).", "🛡️ Afweren houdt jabs en hoeken bijna helemaal tegen, maar een uppercut komt er half door.", "📱 Op een gsm gebruik je de knoppen onder de ring."], "avia": ["🎯 Kies je inzet in virtuele munten en druk op Speel: het vliegtuigje stijgt op van het vliegdekschip en vliegt vanzelf.", "🪙 Elk token dat je raakt telt op of vermenigvuldigt én duwt het vliegtuig omhoog; mis je ze, dan zakt het. Een raket halveert je score en duwt je omlaag, een onweerswolk beëindigt de vlucht.", "🛬 Zakt het vliegtuig tot boven het water, dan zoekt het een landingsplek: vliegdekschip, eiland, booreiland, vliegveld, vrachtschip, ponton, helikopterplatform of een klein vlot. Meestal lukt dat (je krijgt je rondescore als munten), soms plonst het in zee en ben je je inzet kwijt.", "⚙️ Snelheid, startmunten, tokenwaarden en kansen stel je in via ⚙️. Munten zijn alleen virtueel en niets waard."], "race3d": ["🎯 Rij zo ver mogelijk en haal auto’s in zonder te botsen.", "📱 Houd links of rechts op het scherm ingedrukt om te sturen.", "⌨️ ◀ ▶.", "💡 Rakelings passeren levert bonuspunten op."], "space3d": ["🎯 Vlieg door de ruimte, schiet en ontwijk de asteroïden.", "📱 Sleep om te sturen; vasthouden of 🔥 = schieten.", "⌨️ Pijltjes sturen, spatie schieten.", "💡 Blijf in beweging; stilstaan is gevaarlijk."], "maze3d": ["🎯 Vind de groene uitgang van het doolhof.", "📱 ▲ ▼ = lopen, ◀ ▶ of slepen = draaien.", "⌨️ Pijltjes: ▲ ▼ lopen, ◀ ▶ draaien.", "💡 Houd steeds één hand aan dezelfde muur: zo kom je altijd buiten."], "tunnel3d": ["🎯 Vlieg zo ver mogelijk door de tunnel.", "📱 Sleep of gebruik ◀ ▶ om rond te draaien in de tunnel.", "⌨️ ◀ ▶.", "💡 Vlieg door de opening, ontwijk de balken en pak 💎 voor extra punten."], "platform3d": ["🎯 Pak 10 ⭐ en haal de vlag.", "📱 Gebruik de knoppen om te lopen en ⤒ om te springen.", "⌨️ Pijltjes of WASD lopen, spatie springen.", "💡 Spring bovenop vijanden om ze te verslaan."], "surprise3d": ["🎯 Speel minigolf: krijg de bal in zo weinig slagen mogelijk in de put.", "📱 Sleep vanaf de bal naar achteren en laat los, als een katapult.", "⌨️ ◀ ▶ richten, − + kracht, spatie = slaan.", "💡 Hoe verder je trekt, hoe harder de slag; gebruik de randen om te stuiteren."], "invaders": ["🎯 Schiet alle invasieschepen neer voor ze beneden zijn.", "📱 Sleep of ◀ ▶ = bewegen, tik of 🔥 = schieten.", "⌨️ ◀ ▶ bewegen, spatie schieten.", "💡 Verschuil je achter de schilden en ruim eerst de buitenste rijen op."], "asteroids": ["🎯 Schiet de asteroïden kapot zonder geraakt te worden.", "📱 Slepen = draaien, tik = schieten; of de knoppen ◀ ▲ ▶ 🔥.", "⌨️ ◀ ▶ draaien, ▲ gas, spatie schieten.", "💡 Grote stenen breken in kleinere; geef kort gas en laat je drijven."], "pacman": ["🎯 Eet alle stipjes in het doolhof en ontwijk de spoken.", "📱 Veeg of gebruik de knoppen om te sturen.", "⌨️ Pijltjes.", "💡 Na een grote stip kun je even de spoken opeten."], "frogger": ["🎯 Breng 5 kikkers veilig over de weg en de rivier naar huis.", "📱 Veeg of gebruik de knoppen; tik = één sprong vooruit.", "⌨️ Pijltjes.", "💡 Op de rivier spring je op boomstammen; in het water val je."], "dino": ["🎯 Ren zo ver mogelijk en spring over de cactussen.", "📱 Tik om te springen.", "⌨️ Spatie of ⬆ springen, ⬇ bukken.", "💡 Bukken helpt tegen vogels; het tempo gaat langzaam omhoog."], "doodle": ["🎯 Spring zo hoog mogelijk van platform naar platform.", "📱 Houd je vinger links of rechts van het midden, of gebruik de knoppen.", "⌨️ ◀ ▶ sturen.", "💡 Je springt vanzelf; ga je aan één kant uit beeld, dan kom je aan de andere kant terug."], "lander": ["🎯 Land de maanlander zacht op een groen platform.", "📱 Houd het scherm of 🔥 vast voor stuwkracht, ◀ ▶ = draaien.", "⌨️ ▲ of spatie = stuwkracht, ◀ ▶ = draaien.", "💡 Kom recht en langzaam naar beneden en let op je brandstof."], "platformer": ["🎯 Loop en spring naar de vlag aan het einde van het level.", "📱 Knoppen ◀ ▶ lopen, tik om te springen.", "⌨️ ◀ ▶ lopen, ⬆ of spatie springen.", "💡 Kort tikken = lage sprong. Spring op vijanden om ze te verslaan."], "bubble": ["🎯 Schiet bellen en maak groepjes van 3 of meer van dezelfde kleur om ze te laten knallen.", "📱 Sleep om te mikken, loslaten = schieten; tik op de volgende bel om te wisselen.", "⌨️ ◀ ▶ mikken, spatie schieten, ↓ wisselen.", "💡 Kaats tegen de muur om moeilijke plekjes te bereiken."], "towerdef": ["🎯 Houd de vijanden tegen voor ze het einde van het pad halen.", "📱 Kies onderaan een toren en tik op het gras; tik op een toren om te verbeteren of te verkopen.", "⌨️ 1–4 kies toren, pijltjes + spatie plaatsen, u/v verbeteren/verkopen, n = volgende golf, f = sneller.", "💡 Zet torens in de bochten; daar schieten ze het langst."], "fruit": ["🎯 Snijd zoveel mogelijk fruit door.", "📱 Veeg snel over het fruit.", "⌨️ Sleep met de muis over het fruit.", "💣 Raak geen bommen; 3 fruit gemist = game over."], "piano": ["🎯 Tik alleen op de zwarte tegels en mis er geen.", "📱 Tik op de onderste zwarte tegel.", "⌨️ Toetsen D F J K of 1–4.", "💡 Het tempo gaat omhoog; een witte tegel raken = einde."], "cookie": ["🎯 Bak zoveel mogelijk koekjes.", "📱 Tik op het grote koekje.", "⌨️ Klik op het koekje.", "🏭 Koop oma’s en fabrieken: die bakken koekjes per seconde.", "💡 Je voortgang wordt bewaard, ook als je weggaat."], "flood": ["🎯 Maak het hele bord één kleur in zo weinig zetten mogelijk.", "📱 Tik op een kleur: het vlak linksboven neemt die kleur aan.", "⌨️ Toetsen 1–6.", "💡 Kies de kleur die het grootste stuk aan je vlak vastmaakt."], "mahjong": ["🎯 Haal alle stenen weg door gelijke paren te maken.", "📱 Tik op twee gelijke vrije stenen (niets erop, links óf rechts vrij).", "⌨️ ←→ + spatie kiezen, h = hint, s = schudden, u = terug.", "💡 Haal eerst stenen weg die andere stenen blokkeren."], "kleurbal": ["🎯 Sorteer de ballen zodat elke buis maar één kleur heeft.", "📱 Tik op een buis en dan op een andere.", "⌨️ ←→ + spatie, u = terug, h = hint.", "💡 Een bal mag alleen op dezelfde kleur of in een lege buis."], "sudoku": ["🎯 Vul het rooster zodat elk cijfer 1–9 één keer voorkomt in elke rij, kolom en 3×3-blok.", "📱 Tik op een vakje en daarna op een cijfer.", "⌨️ Pijltjes + cijfers 1–9, Backspace wist, N = notities, H = hint.", "💡 Zoek eerst rijen of blokken waar nog maar één cijfer ontbreekt."], "match3": ["🎯 Wissel juwelen om 3 of meer op een rij te maken.", "📱 Tik op twee buursteentjes of veeg om te wisselen.", "⌨️ Pijltjes + spatie.", "💡 Combinaties van 4 of 5 leveren extra punten op."], "sokoban": ["🎯 Duw alle kisten 📦 op de doelen.", "📱 Veeg of tik in de richting waarin je wilt lopen.", "⌨️ Pijltjes of WASD, Z = ongedaan maken, R = opnieuw.", "💡 Je kunt alleen duwen, niet trekken: duw geen kist in een hoek."], "mastermind": ["🎯 Kraak de geheime kleurcode.", "📱 Tik op kleuren om de rij te vullen en dan op ✔.", "⌨️ Toetsen 1–6, Backspace, Enter.", "⚫ = goede kleur op de juiste plek, ⚪ = goede kleur op een verkeerde plek.", "💡 Gebruik je eerste pogingen om uit te zoeken welke kleuren erin zitten."], "nonogram": ["🎯 Kleur de juiste vakjes in zodat er een tekening verschijnt.", "📱 Tik of sleep om vakjes te vullen; ⬛/✖ wisselt de modus.", "⌨️ Pijltjes + spatie vullen, X = zeker leeg, rechtermuisknop = ✖.", "💡 De getallen tonen hoeveel gevulde vakjes er na elkaar in die rij of kolom staan."], "woordzoeker": ["🎯 Vind alle woorden in het letterrooster.", "📱 Sleep over een woord, of tik op de eerste en de laatste letter.", "⌨️ Sleep met de muis over het woord.", "💡 Woorden staan horizontaal, verticaal of schuin."], "quiz": ["🎯 Beantwoord zoveel mogelijk vragen juist.", "📱 Tik op een antwoord.", "⌨️ Toetsen 1–4 kiezen, Enter = volgende vraag.", "💡 Twijfel je? Streep eerst de antwoorden weg die zeker fout zijn."], "chess": ["🎯 Zet de koning van de computer schaakmat.", "📱 Tik op een stuk en daarna op het doelvak.", "⌨️ Klik op een stuk en daarna op het doelvak.", "♙ Jij speelt wit en begint.", "💡 Breng eerst je paarden en lopers naar het midden en rokeer vroeg."], "connect4": ["🎯 Leg als eerste vier schijven op een rij (ook schuin).", "📱 Tik op een kolom om een schijf te laten vallen.", "⌨️ Toetsen 1–7, of ◀ ▶ en spatie.", "💡 Het midden is de sterkste kolom."], "checkers": ["🎯 Sla alle stukken van de tegenstander of zet hem vast.", "📱 Tik op een schijf en dan op een vakje.", "⌨️ Klik op een schijf en dan op een vakje.", "⚠️ Slaan is verplicht (met de meeste stukken). Een dam mag over meerdere vakjes vliegen."], "othello": ["🎯 Heb op het einde de meeste schijven van jouw kleur.", "📱 Tik op een stip om een schijf te leggen.", "⌨️ Klik op een stip.", "🔄 Schijven die je insluit, draaien om naar jouw kleur.", "💡 Hoeken kunnen nooit meer omgedraaid worden: probeer ze te pakken."], "battleship": ["🎯 Laat alle schepen van de computer zinken voor hij de jouwe vindt.", "📱 Schud je vloot tot je tevreden bent en tik op ⚓ Start; tik daarna in de vijandelijke wateren om te vuren.", "⌨️ Klik op een vak om te vuren.", "💡 Na een treffer: schiet ernaast om de richting van het schip te vinden."], "blackjack": ["🎯 Kom dichter bij 21 dan de dealer zonder erover te gaan.", "📱 Gebruik de knoppen: kaart, passen, verdubbelen, delen.", "⌨️ h = kaart, s = passen, d = verdubbelen, spatie = delen.", "💡 Blackjack betaalt 3:2; de dealer past vanaf 17."], "solitaire": ["🎯 Leg alle kaarten per kleur op volgorde (aas tot heer) op de fundamenten.", "📱 Tik op een kaart (of reeks) en dan op het doel; tik op de voorraad om te trekken.", "⌨️ Klik op kaarten, spatie = trekken, u = ongedaan maken.", "💡 Tik nog eens op een gekozen kaart om ze naar een fundament te sturen."], "dots": ["🎯 Sluit de meeste hokjes.", "📱 Tik tussen twee stippen om een lijn te trekken.", "⌨️ Klik tussen twee stippen.", "💡 Wie een hokje sluit, mag nog eens. Geef je tegenstander geen derde zijde cadeau."], "yahtzee": ["🎯 Haal de hoogste score in 13 beurten.", "📱 Gooi, tik op dobbelstenen om ze vast te houden en tik op een rij om te scoren.", "⌨️ Spatie = gooien, 1–5 = vasthouden.", "💡 Je mag 3× gooien per beurt. Haal 63 in het bovenste deel voor 35 bonuspunten."] }, "mp": { "blokkenland": ["🎯 Bouw samen in dezelfde blokkenwereld.", "📱 Links slepen = lopen, rechts slepen = kijken, ⛏️ breken, 🧱 plaatsen, ⤒ springen (2× = vliegen).", "⌨️ WASD lopen, muis kijken, klik/X breken, rechtsklik/C plaatsen, 1–9 kiezen, spatie springen, F vliegen.", "💡 De wereld leeft bij de host: wie later meedoet, ziet alles wat al gebouwd is."], "ttt": ["🎯 Zet als eerste drie op een rij.", "📱 Tik op een leeg vakje als je aan de beurt bent.", "⌨️ Klik op een vakje.", "💡 De verliezer begint de volgende ronde."], "connect4": ["🎯 Leg als eerste vier schijven op een rij (ook schuin).", "📱 Tik op een kolom als je aan de beurt bent.", "⌨️ Toetsen 1–7, of ◀ ▶ en spatie.", "💡 Bouw dreigingen op twee plaatsen tegelijk."], "checkers": ["🎯 Sla alle stukken van je tegenstander of zet hem vast.", "📱 Tik op een schijf en dan op een vakje.", "⌨️ Klik op een schijf en dan op een vakje.", "⚠️ Slaan is verplicht (met de meeste stukken); dammen vliegen."], "othello": ["🎯 Heb op het einde de meeste schijven van jouw kleur.", "📱 Tik op een stip om een schijf te leggen.", "⌨️ Klik op een stip.", "💡 Hoeken zijn goud waard: die kunnen niet meer omgedraaid worden."], "battleship": ["🎯 Laat alle schepen van je tegenstander zinken.", "📱 Zet je vloot neer (🔀 Schud of 🔁 Draaien) en tik op ✅ Klaar; tik daarna op zijn water om te vuren.", "⌨️ Klik om schepen te plaatsen en om te vuren.", "💡 Na een treffer: schiet ernaast om de richting te vinden."], "chess": ["🎯 Zet de koning van je tegenstander schaakmat.", "📱 Tik op een stuk en daarna op het doelvak.", "⌨️ Klik op een stuk en daarna op het doelvak.", "🏳️ Opgeven kan met de knop onder het bord."], "dots": ["🎯 Sluit de meeste hokjes.", "📱 Tik tussen twee stippen om een lijn te trekken.", "⌨️ Klik tussen twee stippen.", "💡 Wie een hokje sluit, mag nog eens."], "pong": ["🎯 Speel de bal langs je tegenstander; eerste tot 7 wint.", "📱 Sleep op het speelveld of gebruik de knoppen ▲ ▼.", "⌨️ ▲ ▼.", "💡 Raak de bal met de rand van je peddel voor een scherpe hoek."], "tanks": ["🎯 Raak de andere tank 5 keer.", "📱 Knoppen ↺ ↻ draaien, ▲ ▼ rijden, 🔥 schieten.", "⌨️ Pijltjes of WASD, spatie = schieten.", "💡 Kogels stuiteren één keer tegen de muur: schiet om de hoek!"], "flight": ["🎯 Vlieg samen rond, land op vliegvelden en het vliegdekschip, race door ringen of vecht in de lucht.", "📱 Knoppen voor rollen, neus op/neer, gas, vuren, raketten, flares en landingsgestel.", "⌨️ Klik in het beeld en stuur met de muis · Z/S neus omlaag/omhoog · Q/D rollen · A/E roer · Shift/Ctrl gas · G landingsgestel · B remmen · C camera · Esc menu.", "💡 Opstijgen: vol gas en optrekken boven de startsnelheid. Landen: gas terug, landingsgestel uit, rustig dalen met de vleugels recht."], "bbox": ["🎯 5 levels: elke keer zit je in een grotere kartonnen doos vol knoppen (3D, door je eigen ogen). Eén knop geeft de 🔑 sleutel, een andere opent de 🚪 uitgang in het plafond.", "⌨️ WASD/ZQSD of pijltjes = lopen · klik in de doos en kijk met de muis · klik of E = indrukken/oppakken · spatie = springen · bij de touwladder spatie/W = klimmen.", "🦆 Alles wat de grapknoppen laten verschijnen is echt 3D en interactief: klik = het reageert (ballon knalt, kat miauwt, spook verdwijnt, pizza opeten…), loop ertegen = schoppen, R = vastpakken en gooien — ook naar andere spelers!", "🎒 Items: zaklamp, springschoenen, skateboard, vergrootglas (echte knoppen fonkelen) en ballon (zweven). G = laten vallen. Vanaf level 4 is het donker!", "🤝 Samen: F = iemand duwen, 1-6 = emoji. De speler met de sleutel ontgrendelt het luik. ⏱️ Je totale tijd telt — verbreek je record!"], "kart": ["🎯 Race 3 rondes tegen de anderen (of tegen de computer) en kom als eerste over de finish.", "⌨️ W/↑ = gas · S/↓ = remmen/achteruit · A D / ← → = sturen · spatie of E = item gebruiken.", "❓ Rij door de gele blokken voor een item: 🍌 banaan (achter je), 🚀 raket (op wie voor je rijdt), 🛡️ schild, ⚡ turbo of 🛢️ olie.", "🌱 Naast de weg rij je veel trager — blijf op het asfalt!"], "hide": ["🎯 Kies Klassiek of Prop hunt. Eén speler zoekt: die telt 20 s met een zwart scherm terwijl de rest zich verstopt in het grote huis (6 kamers, kasten, tuin met schuur en hagen).", "⌨️ WASD/pijltjes = lopen · Shift = rennen · sleep = rondkijken · scrollwiel = zoomen (helemaal in = eerste persoon).", "🏠 Klassiek: de zoeker loopt naar je toe en drukt E of klikt = gevonden. Wie gevonden is zoekt mee!", "📦 Prop hunt: ga naast een voorwerp staan en druk E om erin te veranderen (Q = ander voorwerp, R = draaien). Blijf stil! De zoeker klikt op verdachte voorwerpen — fout = −4 s.", "⏱️ Een ronde duurt 3 minuten. Niet gevonden = 5 punten."], "stadspel": ["🎲 Gooi de dobbelstenen en koop straten waar je op landt; wie op jouw straat komt, betaalt huur.", "🏠 Heb je een hele kleurgroep, dan verdubbelt de huur en mag je huizen (max 3) en een winkelcentrum bouwen.", "🤝 Tik op een straat van een ander om een bod te doen; Kans-kaarten en de Strafbank zorgen voor verrassingen.", "🏆 Na 20 rondes wint wie het rijkst is (geld + bezit); wie niet kan betalen, gaat failliet."], "maker": ["🛠️ Bouw je eigen level: kies een tegel en klik of sleep in het raster (rechtermuisknop = gummen, Ctrl+Z = ongedaan).", "▶️ Zet een Start en een Finish, en druk op ▶ Test om je level te spelen (Esc = terug naar de editor).", "⌨️ Lopen met ←/→, springen met spatie of ↑. Spring op vijanden, pak munten en de sleutel voor de deur; vlaggen zijn checkpoints.", "🔗 Met Deel krijg je een code voor vrienden, of publiceer je je level online; bij Ontdek levels speel je de levels van anderen."], "mens": ["🎲 Gooi een 6 om een pion op het bord te zetten; met een 6 mag je nog eens.", "👆 Tik op een oplichtende pion om te zetten; land je op een ander, dan gaat die terug naar zijn hok.", "🔁 Zonder pionnen op het bord heb je 3 pogingen om een 6 te gooien.", "🏠 Breng als eerste alle 4 pionnen precies thuis."], "ganzenbord": ["🎲 Gooi twee dobbelstenen en loop vooruit; als eerste precies op 63 wint, te veel = terugkaatsen.", "🪿 Gans: nog eens zo ver. 🌉 6→12, 🌀 42→39, 💀 58 terug naar start.", "🍺 Herberg (19): één beurt overslaan. 🕳️ Put (31) en 🔒 gevangenis (52): wachten tot een ander je komt bevrijden.", "✨ Optioneel: eerste worp 6+3 → 26, 5+4 → 53."], "obby": ["🎯 Ren, spring en klim door 4 fases boven een zee van lava naar de finish.", "⌨️ WASD/pijltjes = lopen, Spatie = springen; sleep om de camera te draaien, scroll om te zoomen.", "🚩 Vallen of lava = terug naar je laatste checkpoint. Pak bij checkpoint 2 de ✨ dubbele sprong!", "👻 Online wint wie het eerst over de finish is; solo race je tegen je eigen beste tijd."], "zombie": ["🧟 Overleef zo veel mogelijk zombiegolven op het dorpsplein; elke 5e golf komt er een baas-zombie!", "⌨️ Lopen met WASD/pijltjes, mikken met de muis en klikken om te schieten (spatie of 🔫 = automatisch mikken).", "🪙 Verzamel muntjes en koop tussen de golven een shotgun, blaster, medkit of barricade.", "🤝 Ben je neer? Een maatje redt je door naast je te staan. Score = golven × 100 + zombies."], "golf3d": ["⛳ Sleep vanaf het veld naar achteren en laat los om te slaan: hoe verder je sleept, hoe harder.", "⌨️ Of houd spatie / ⛳ ingedrukt en laat los; je slaat in de kijkrichting van de camera (draaien met ← → of ⟲ ⟳).", "💧 Water of van de baan vallen = +1 strafslag; maximaal 8 slagen per hole.", "🏆 Iedereen speelt tegelijk dezelfde hole; de laagste totaalscore na 9 holes wint."], "bowling": ["↔️ Kies je positie met ← → en je effect (curve) met ↑ ↓.", "🎳 Druk op spatie of 🎳 om de krachtmeter te starten en druk nog eens om te gooien — of veeg omhoog over de baan.", "⭐ Strike = 10 + de volgende 2 ballen, spare = 10 + de volgende bal.", "🏆 Na 10 frames wint de hoogste score; online gooit iedereen om de beurt een frame."], "keuken": ["🍅 Pak ingrediënten uit de kratten, snijd ze op de snijplank (houd E ingedrukt) en bak ze in de pan of oven.", "🛎️ Leg alles op een schoon bord en breng het naar het serveerluik vóór de bon verloopt — snel = fooi!", "🔥 Laat niets te lang staan: verbrand eten vat vuur, blus het met de rode blusser (houd E).", "🧽 Was vuile borden af bij de gootsteen en werk samen voor 3 sterren."], "paintball": ["🚩 Kies een modus: Vlag veroveren (pak de vijandelijke vlag en breng hem naar je basis, eerst 3) of 🎯 Teamdeathmatch (eerst 25 treffers).", "⌨️ WASD/pijltjes = lopen, muis = richten, klik = schieten, spatie = springen, Shift = sprinten, R = herladen.", "📱 Op je telefoon: knoppen om te lopen, sleep om rond te kijken, 🎯 schiet en richt vanzelf.", "🎨 Geraakt? Dan ben je 4 seconden uit en kom je terug bij je basis."], "overleef": ["🔺 Overleef vier speelplaatsspelletjes na elkaar: Rood licht groen licht, Touwtrekken, Glazen brug en Stoelendans.", "🚦 Loop met ▲ als de robot wegkijkt en sta stil bij rood. Bij touwtrekken druk je snel op Spatie (in het groen telt dubbel).", "🌉 Op de brug kies je ◀ of ▶. Bij de stoelendans druk je op Spatie zodra de muziek stopt.", "🎉 Wie afvalt, verdwijnt met een confetti-poef en kijkt mee. Wie als laatste overblijft, wint!"], "bommen": ["💣 Loop met de pijltjes/WASD en leg met spatie (of 💣) een bom.", "🎁 Blaas kratten op voor power-ups: 💣 meer bommen, 🔥 groter vuur, 👟 sneller, 🦶 bommen wegschoppen, 🛡️ schild.", "💥 Ontploffingen zetten andere bommen af; na 90 seconden krimpt de arena.", "🏆 Wie als laatste overblijft wint de ronde; wie eerst 2 rondes wint, wint het spel."], "valrace": ["🏃 Val Race is een spelshow in 4 rondes: overleef elke ronde om door te gaan naar de finale.", "🔨 Obstakelrace: ontwijk hamers, muren en wipplanken en haal de finish bij de eersten. Valtegels: tegels vallen na je stap, blijf als laatste staan.", "🦊 Staartjesjacht: tik iemand van achteren aan om zijn staart te pakken; heb je er een op het einde, dan ben je door.", "👑 Finale Kroonklim: klim de toren op en grijp als eerste de kroon. Spatie = springen, E = duiken."], "boxing": ["🎯 Raak je tegenstander zo vaak mogelijk: jab = 1 punt, hoek = 2, uppercut = 3. Eerste tot 20 punten of een knock-out wint.", "⌨️ → naar de tegenstander, ← achteruit, ↓ afweren · linkermuisknop/rechtermuisknop = linkse/rechtse jab · A/E hoeken · W/C uppercuts (zelf aan te passen met ⌨️ Toetsen instellen).", "🛡️ Afweren houdt jabs en hoeken bijna helemaal tegen, maar een uppercut komt er half door.", "📱 Op een gsm gebruik je de knoppen onder de ring."], "avia": ["🎯 Kies je inzet in virtuele munten en druk op Doe mee; de host start de ronde en iedereen vliegt dezelfde route: het vliegtuigje stijgt op van het vliegdekschip en vliegt vanzelf.", "🪙 Elk token dat je raakt telt op of vermenigvuldigt én duwt het vliegtuig omhoog; mis je ze, dan zakt het. Een raket halveert je score en duwt je omlaag, een onweerswolk beëindigt de vlucht.", "🛬 Zakt het vliegtuig tot boven het water, dan zoekt het een landingsplek: vliegdekschip, eiland, booreiland, vliegveld, vrachtschip, ponton, helikopterplatform of een klein vlot. Meestal lukt dat (je krijgt je rondescore als munten), soms plonst het in zee en ben je je inzet kwijt.", "⚙️ Snelheid, startmunten, tokenwaarden en kansen stel je in via ⚙️. Munten zijn alleen virtueel en niets waard."], "race": ["🎯 Rij als eerste 3 ronden rond de baan.", "📱 Gebruik ◀ ▶ om te sturen en 🔺 Gas / 🔻 Rem.", "⌨️ Z of ↑ gas · S of ↓ rem · Q/D of ←/→ sturen.", "💡 Gele pijlen geven een boost, gras remt je af en de vangrail kaatst je terug."], "dday": ["🎯 Speel met je team: verover punten, win het teamgevecht, steel de vlag of overleef de zombies.", "📱 Joystick om te lopen, sleep om te kijken, knoppen voor schieten, richten, healen en meer.", "⌨️ Z/Q/S/D lopen · muis kijken · klik schieten · rechtsklik richten · spatie springen · W hurken · T voertuig · Tab scorebord.", "💡 Kies in het menu (Esc) je klasse, de spelmodus, de map en de moeilijkheid van de bots."], "tron": ["🎯 Blijf het langst rijden zonder ergens tegenaan te botsen.", "📱 Veeg op het veld of gebruik de knoppen om af te slaan.", "⌨️ Pijltjes of WASD.", "💡 Laatste die rijdt wint de ronde; 3 rondes winnen = spel gewonnen."], "hockey": ["🎯 Schiet de puck in het doel van je tegenstander; eerste tot 5 wint.", "📱 Sleep je schijf in de onderste helft.", "⌨️ Pijltjes, of sleep met de muis.", "💡 Kaats via de zijkant om langs de verdediging te komen."], "snakeduel": ["🎯 Wees de laatste slang die overleeft.", "📱 Veeg op het bord of gebruik de knoppen.", "⌨️ Pijltjes of WASD.", "🍎 Eet appels om te groeien; bots nergens tegen.", "💡 3 rondes winnen = spel gewonnen."], "quiz": ["🎯 Geef zo snel mogelijk het juiste antwoord.", "📱 Tik op een antwoord.", "⌨️ Toetsen 1–4.", "💡 Het snelste juiste antwoord krijgt 100 punten."], "draw": ["🎯 Teken het woord zodat de anderen het raden, of raad wat de tekenaar maakt.", "📱 Teken met je vinger; raders typen hun gok en tikken op Enter.", "⌨️ Teken met de muis; typ je gok en druk op Enter.", "💡 Sneller raden = meer punten, voor de rader én de tekenaar."], "words": ["🎯 Vorm zoveel mogelijk woorden van minstens 3 letters uit de 9 letters.", "📱 Typ een woord en tik op Enter of toevoegen.", "⌨️ Typ en druk op Enter.", "💡 Elke letter zo vaak als hij voorkomt; langere woorden geven meer punten."], "yahtzee": ["🎯 Haal samen 13 beurten lang de hoogste score.", "📱 Gooi, tik op dobbelstenen om ze vast te houden en tik op een rij in jouw kolom.", "⌨️ Spatie = gooien, 1–5 = vasthouden.", "💡 63 punten in het bovenste deel = 35 bonuspunten."], "weerwolven": ["🎯 Burgers: ontmasker de weerwolven. Weerwolven: blijf onopgemerkt.", "📱 Bekijk je rolkaart (tik om ze te verbergen) en tik op een speler om te kiezen.", "⌨️ Klik op een speler om te kiezen.", "🌙 ’s Nachts kiezen de wolven een slachtoffer, overdag stemt het dorp.", "💡 Praat met elkaar (in het echt of via de chat) voor je stemt."], "spionnen": ["🎯 Vind als team al je geheime woorden voor de andere ploeg.", "📱 Spionmeesters geven een hint: één woord + een aantal.", "⌨️ Teamleden klikken op de woorden die bij de hint passen.", "💀 Tik nooit op de moordenaar — dan verlies je meteen."], "jeopardy": ["🎯 Verdien de meeste punten met juiste antwoorden.", "📱 Wie aan de beurt is, kiest een vakje; iedereen buzzt met de knop.", "⌨️ Spatie = buzzen, 1–4 = antwoord kiezen.", "💡 Fout geantwoord kost punten: buzz alleen als je het (bijna) zeker weet."], "stadland": ["🎯 Vul per categorie een woord in dat met de letter begint.", "📱 Tik in de vakjes en typ; tik op ✋ STOP! als alles ingevuld is.", "⌨️ Typ en spring met Tab naar het volgende vak.", "🗳️ Stem ✗ op foute antwoorden. Uniek = 10 pt, dubbel = 5 pt."], "bluf": ["🎯 Bied hoeveel stenen van een waarde er in totaal liggen, of roep Bluf!", "📱 Kies aantal en waarde en tik op bieden, of op Bluf!", "⌨️ ↑↓ aantal, 1–6 waarde, Enter bieden, B = bluf.", "💡 Enen zijn joker. Wie fout zit, verliest een steen."], "kleurkaart": ["🎯 Raak als eerste al je kaarten kwijt.", "📱 Tik op een kaart met dezelfde kleur, hetzelfde getal of symbool.", "⌨️ ←/→ kiezen, Enter spelen, D pakken/passen, L = laatste kaart.", "💡 Vergeet niet “laatste kaart” te melden!"], "pesten": ["🎯 Raak als eerste al je kaarten kwijt.", "📱 Tik op een kaart van dezelfde kleur of waarde.", "⌨️ ←/→ kiezen, Enter spelen, D pakken, L = laatste kaart.", "🃏 2 = pak 2, joker = pak 5, 7 blijft, 8 slaat over, heer nog eens, aas draait om, boer kiest kleur.", "💡 Je mag niet eindigen op een pestkaart."], "drawteams": ["🎯 Teken voor je team en raad wat je teamgenoot tekent.", "📱 Teken met je vinger; alleen je eigen team raadt (typ + Enter).", "⌨️ Teken met de muis; typ je gok en druk op Enter.", "💡 Binnen 20 seconden geraden = bonuspunt."], "sudoku": ["🎯 Vul samen het sudokurooster in.", "📱 Tik op een vakje en daarna op een cijfer.", "⌨️ Pijltjes + cijfers 1–9, Backspace wist, H = hint.", "💡 Juiste cijfers krijgen de kleur van de speler die ze vond."], "mines": ["🎯 Open samen alle veilige vakjes zonder op een mijn te stappen.", "📱 Tik = graven, lang drukken of vlag-modus = 🚩.", "⌨️ Klik = graven, rechtsklik = vlag, F wisselt modus.", "💡 Tik op een cijfer met genoeg vlaggen om alle buren te openen."], "woordzoeker": ["🎯 Vind de meeste woorden in het gedeelde rooster.", "📱 Sleep over een woord, of tik op de eerste en de laatste letter.", "⌨️ Sleep met de muis over het woord.", "💡 Woorden staan ook schuin; wie het eerst vindt, krijgt het punt."] } };
   const lsg = (k, d) => {
     try {
       const v = localStorage.getItem(k);
