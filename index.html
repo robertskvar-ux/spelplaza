@@ -58212,6 +58212,7 @@ html[data-spt="rustig"] .chips button,html[data-spt="rustig"] .mpbn,html[data-sp
         window.SPZ_RANKS && SPZ_RANKS.ui(body);
       } else if (tab === "site") {
         window.SPZ_POWER && SPZ_POWER.ownerSite(body);
+        window.SPZ_H2 && SPZ_H2.ownerUI(body);
       } else if (tab === "mall") {
         window.SPZ_HALL && SPZ_HALL.ownerUI(body);
       } else if (tab === "eco") {
@@ -58963,9 +58964,66 @@ html[data-spt="rustig"] .chips button,html[data-spt="rustig"] .mpbn,html[data-sp
       picify(th, g);
     });
   }
+  let picsOn = LS2.get("h2_pics", 1);
+  function unpic() {
+    document.querySelectorAll(".th.h2pic").forEach((th) => {
+      th.classList.remove("h2pic");
+      th.style.removeProperty("background");
+      const e = th.querySelector(".h2emo");
+      if (e) {
+        th.prepend(document.createTextNode(e.textContent));
+        e.remove();
+      }
+    });
+    document.querySelectorAll(".card").forEach((c) => c._h2 = 0);
+  }
+  setTimeout(function cs() {
+    const so = S();
+    if (!so || !so.sub) {
+      setTimeout(cs, 1500);
+      return;
+    }
+    try {
+      so.socStart();
+    } catch (e) {
+    }
+    so.sub("ctl/pics", (t, d) => {
+      const A = window.SPZ_ADM;
+      const on = !(d && A && d.otk === A.OWNTOK && d.on === 0);
+      if (on === !!picsOn) return;
+      picsOn = on ? 1 : 0;
+      LS2.set("h2_pics", picsOn);
+      if (on) enhance();
+      else unpic();
+    });
+  }, 2500);
+  function ownerUI(b) {
+    const h = mk("div", "hsec", "🖼️ Screenshots op spelkaarten");
+    b.append(h);
+    const p = mk("p", "hnote", "Echte plaatjes van de spellen op de kaarten op de homepage. Geldt voor iedereen.");
+    b.append(p);
+    const x = mk("button", "btn" + (picsOn ? " sec" : ""), picsOn ? "🖼️ Uitzetten voor iedereen" : "🖼️ Aanzetten voor iedereen");
+    x.onclick = () => {
+      const A = window.SPZ_ADM, so = S();
+      if (!A || !A.isOwn() || !so) return;
+      try {
+        so.socStart();
+      } catch (e) {
+      }
+      const on = !picsOn;
+      so.pub("ctl/pics", { otk: A.OWNTOK, on: on ? 1 : 0, ts: Date.now() }, true);
+      picsOn = on ? 1 : 0;
+      LS2.set("h2_pics", picsOn);
+      on ? enhance() : unpic();
+      toast(on ? "🖼️ Screenshots aan" : "🖼️ Screenshots uit");
+      x.className = "btn" + (picsOn ? " sec" : "");
+      x.textContent = picsOn ? "🖼️ Uitzetten voor iedereen" : "🖼️ Aanzetten voor iedereen";
+    };
+    b.append(x);
+  }
   function picify(th, g) {
     const T = window.SPZ_THUMBS || {};
-    if (!th || !T[g.id] || th.classList.contains("h2pic")) return;
+    if (!picsOn || !th || !T[g.id] || th.classList.contains("h2pic")) return;
     th.classList.add("h2pic");
     th.style.setProperty("background", "url(" + T[g.id] + ") center/cover no-repeat", "important");
     [...th.childNodes].forEach((n) => {
@@ -59146,7 +59204,7 @@ html[data-spt="rustig"] .chips button,html[data-spt="rustig"] .mpbn,html[data-sp
       so.pub("chal/" + so.UID, "", true);
     });
   }, 5e3);
-  window.SPZ_H2 = { openLB, openClan, enhance };
+  window.SPZ_H2 = { openLB, openClan, enhance, ownerUI };
 })();
 ;
 (function() {
