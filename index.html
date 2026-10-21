@@ -70401,4 +70401,24 @@ window.SPZ_PARTYQ = [
   addEventListener("contextmenu", () => setTimeout(all, 0));
   addEventListener("pagehide", all);
 })();
+;
+(function() {
+  const MAP = { KeyW: "w", KeyA: "a", KeyS: "s", KeyD: "d", KeyQ: "q", KeyZ: "z", KeyE: "e" };
+  const fix = (e) => {
+    if (!e.isTrusted) return;
+    const t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const want = MAP[e.code];
+    if (!want) return;
+    const k = e.shiftKey ? want.toUpperCase() : want;
+    if (e.key === k || e.key.toLowerCase() === want) return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    const n = new KeyboardEvent(e.type, { key: k, code: e.code, shiftKey: e.shiftKey, repeat: e.repeat, bubbles: true, cancelable: true });
+    (t || document).dispatchEvent(n);
+  };
+  addEventListener("keydown", fix, true);
+  addEventListener("keyup", fix, true);
+})();
 </script></body></html>
