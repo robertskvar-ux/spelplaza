@@ -766,7 +766,7 @@ function zombieGame(st, net) {
   function addP(p, i, botFlag, col) {
     if (PL[p.id]) return PL[p.id];
     const cl = new V.Color(col || (net.pcol ? net.pcol(p) : "#e5484d"));
-    const sd = makeSoldier({ variant: i % 3, armband: cl.getHex() });
+    const sd = makeSoldier({ variant: i % 3, armband: cl.getHex(), lk: p.lk, me: p.id === ME, pid: p.id });
     const root = new V.Group(), body = new V.Group();
     body.add(sd.g);
     root.add(body);
@@ -2766,13 +2766,126 @@ function makeSoldier(o = {}) {
     soldierDress(res, lk, P);
   } catch (e) {
   }
+  if (lk && lk.p3 && !o.seated && typeof soldierPet === "function") try {
+    soldierPet(res, lk.p3, lk.pl || 1);
+  } catch (e) {
+  }
+  res.pid = o.pid != null ? o.pid : o.me ? "__me" : null;
+  res.me = !!o.me;
+  SOLDIER_LIVE.push(res);
+  if (SOLDIER_LIVE.length > 200) SOLDIER_LIVE.splice(0, SOLDIER_LIVE.length - 200);
   return res;
 }
+const SOLDIER_LIVE = [];
+const SOLDIER_PETS = { hond: ["🐶 Hondje", 150], kat: ["🐱 Poesje", 150], eend: ["🦆 Eendje", 120], draak: ["🐲 Draakje", 300], robot: ["🤖 Robotje", 250], slijm: ["🟢 Slijmpje", 100], uil: ["🦉 Uiltje", 180] };
+function soldierPet(S, kind, lvl) {
+  const T = THREE;
+  const M = (h) => _sm(h);
+  const g = new T.Group();
+  const sc = 0.8 + Math.min(0.5, (lvl - 1) * 0.05);
+  g.scale.setScalar(sc);
+  g.position.set(0.75, 0, -0.2);
+  S.g.add(g);
+  const add = (geo, col, x, y, z, sx, sy, sz) => {
+    const m = new T.Mesh(geo, M(col));
+    m.position.set(x, y, z);
+    if (sx) m.scale.set(sx, sy, sz);
+    m.castShadow = true;
+    g.add(m);
+    return m;
+  };
+  const B = (w, h, d) => _sg("pb" + w + "_" + h + "_" + d, () => new T.BoxGeometry(w, h, d)), Sp = (r) => _sg("ps" + r, () => new T.SphereGeometry(r, 10, 8));
+  const eye = (x, y, z) => {
+    add(Sp(0.035), 1118481, x, y, z);
+  };
+  let tail = null, fly = false;
+  if (kind === "hond") {
+    add(B(0.3, 0.22, 0.45), 13010498, 0, 0.3, 0);
+    add(B(0.24, 0.22, 0.24), 13010498, 0, 0.45, 0.26);
+    add(B(0.07, 0.14, 0.05), 9132587, -0.1, 0.6, 0.26);
+    add(B(0.07, 0.14, 0.05), 9132587, 0.1, 0.6, 0.26);
+    eye(-0.06, 0.5, 0.38);
+    eye(0.06, 0.5, 0.38);
+    add(B(0.06, 0.05, 0.05), 1118481, 0, 0.43, 0.39);
+    [[-0.1, 0.15], [0.1, 0.15], [-0.1, -0.15], [0.1, -0.15]].forEach(([x, z]) => add(B(0.07, 0.2, 0.07), 13010498, x, 0.1, z));
+    tail = add(B(0.05, 0.05, 0.2), 13010498, 0, 0.38, -0.3);
+  } else if (kind === "kat") {
+    add(B(0.26, 0.2, 0.4), 10265519, 0, 0.28, 0);
+    add(B(0.22, 0.2, 0.2), 10265519, 0, 0.42, 0.24);
+    [-1, 1].forEach((s) => add(_sg("pcone", () => new T.ConeGeometry(0.05, 0.1, 4)), 10265519, s * 0.07, 0.56, 0.24));
+    eye(-0.05, 0.45, 0.35);
+    eye(0.05, 0.45, 0.35);
+    [[-0.08, 0.13], [0.08, 0.13], [-0.08, -0.13], [0.08, -0.13]].forEach(([x, z]) => add(B(0.06, 0.18, 0.06), 10265519, x, 0.09, z));
+    tail = add(B(0.04, 0.3, 0.04), 10265519, 0, 0.45, -0.22);
+  } else if (kind === "eend") {
+    add(Sp(0.18), 16767053, 0, 0.2, 0, 1, 0.85, 1.2);
+    add(Sp(0.12), 16767053, 0, 0.42, 0.12);
+    add(B(0.1, 0.04, 0.1), 16747008, 0, 0.4, 0.25);
+    eye(-0.06, 0.46, 0.2);
+    eye(0.06, 0.46, 0.2);
+  } else if (kind === "draak") {
+    fly = true;
+    add(Sp(0.18), 1483594, 0, 0.9, 0, 1, 0.9, 1.3);
+    add(Sp(0.13), 1483594, 0, 1.05, 0.2);
+    eye(-0.06, 1.1, 0.31);
+    eye(0.06, 1.1, 0.31);
+    [-1, 1].forEach((s) => {
+      const w = add(B(0.35, 0.02, 0.2), 4906624, s * 0.25, 0.98, 0);
+      w.userData.wing = s;
+    });
+    tail = add(_sg("pcone2", () => new T.ConeGeometry(0.06, 0.3, 6)), 1483594, 0, 0.85, -0.3);
+    tail.rotation.x = -1.4;
+  } else if (kind === "robot") {
+    fly = true;
+    add(B(0.25, 0.25, 0.25), 11581636, 0, 0.9, 0);
+    add(B(0.2, 0.08, 0.02), 2282478, 0, 0.93, 0.13);
+    add(_sg("pant", () => new T.CylinderGeometry(0.01, 0.01, 0.15, 4)), 5592405, 0, 1.1, 0);
+    add(Sp(0.03), 15026253, 0, 1.18, 0);
+  } else if (kind === "slijm") {
+    const m = add(Sp(0.2), 4906624, 0, 0.17, 0, 1, 0.75, 1);
+    m.material = new T.MeshStandardMaterial({ color: 4906624, transparent: true, opacity: 0.85, roughness: 0.2 });
+    tail = m;
+    eye(-0.07, 0.25, 0.17);
+    eye(0.07, 0.25, 0.17);
+  } else if (kind === "uil") {
+    fly = true;
+    add(Sp(0.17), 9132587, 0, 0.95, 0, 1, 1.15, 0.9);
+    add(Sp(0.06), 16777215, -0.06, 1.02, 0.13);
+    add(Sp(0.06), 16777215, 0.06, 1.02, 0.13);
+    eye(-0.06, 1.02, 0.18);
+    eye(0.06, 1.02, 0.18);
+    add(B(0.04, 0.05, 0.04), 16747008, 0, 0.96, 0.17);
+  }
+  g.userData.pet = { kind, tail, fly, t: Math.random() * 6 };
+  S.pet = g;
+  SOLDIER_PETG.push(g);
+  if (SOLDIER_PETG.length > 60) SOLDIER_PETG.shift();
+}
+const SOLDIER_PETG = [];
+(function petTick() {
+  requestAnimationFrame(petTick);
+  const t = performance.now() / 1e3;
+  for (const g of SOLDIER_PETG) {
+    if (!g.parent) continue;
+    const u = g.userData.pet;
+    const ph = t * 3 + u.t;
+    g.position.y = u.fly ? Math.sin(ph) * 0.08 : Math.abs(Math.sin(ph * 1.4)) * 0.05;
+    g.rotation.y = Math.sin(ph * 0.4) * 0.25;
+    if (u.tail) {
+      if (u.kind === "slijm") u.tail.scale.set(1 + Math.sin(ph * 2) * 0.08, 0.75 - Math.sin(ph * 2) * 0.08, 1);
+      else u.tail.rotation.y = Math.sin(ph * 4) * 0.5;
+    }
+    g.children.forEach((c) => {
+      if (c.userData.wing) c.rotation.z = c.userData.wing * Math.sin(ph * 4) * 0.5;
+    });
+  }
+})();
 const SOLDIER_ITEMS = {
-  h: { pet: ["🧢 Pet", 60], cowboy: ["🤠 Cowboyhoed", 90], kroon: ["👑 Kroon", 250], feest: ["🥳 Feestmuts", 50], kok: ["👨‍🍳 Koksmuts", 70], viking: ["⚔️ Vikinghelm", 140], oren: ["🐰 Konijnenoren", 80], halo: ["😇 Aureool", 200], tovenaar: ["🧙 Tovenaarshoed", 160], koptelefoon: ["🎧 Koptelefoon", 90] },
-  b: { rugzak: ["🎒 Rugzak", 60], cape: ["🦸 Cape", 120], vleugels: ["🪽 Vleugels", 220], jetpack: ["🚀 Jetpack", 260], zwaard: ["🗡️ Zwaard", 150], gitaar: ["🎸 Gitaar", 130] },
-  s: { rood: ["🔴 Rood pak", 40, 14041157], groen: ["🟢 Groen pak", 40, 3055195], geel: ["🟡 Geel pak", 40, 15119394], roze: ["🩷 Roze pak", 40, 15228316], zwart: ["⚫ Zwart pak", 60, 2763317], wit: ["⚪ Wit pak", 60, 15263982], goud: ["🏅 Goud pak", 300, 13934615], paars: ["🟣 Paars pak", 40, 9133302] }
+  h: { lauw: Object.assign(["🌿 Seizoenskrans", 0], { ex: 1, season: 10, parts: [{ s: "ring", c: 2278750, w: 0.42, h: 0.42, d: 0.42, y: 0.03, r: [1.57, 0, 0] }, { s: "bol", c: 16767053, w: 0.07, h: 0.07, d: 0.07, y: 0.05, z: 0.2, glow: 1 }], hide: false }), ster: Object.assign(["🌟 Sterrenkroon", 0], { ex: 1, parts: [{ s: "ring", c: 16767053, w: 0.45, h: 0.45, d: 0.45, y: 0.06, r: [1.57, 0, 0], glow: 1 }, { s: "ster", c: 16777215, w: 0.14, h: 0.18, d: 0.14, y: 0.2, glow: 1 }], hide: false }), vlam: Object.assign(["🔥 Vlammenhaar", 0], { ex: 1, parts: [{ s: "kegel", c: 16747008, w: 0.3, h: 0.35, d: 0.3, y: 0.12, glow: 1 }, { s: "kegel", c: 16767053, w: 0.18, h: 0.25, d: 0.18, y: 0.1, z: 0.05, glow: 1 }] }), pet: ["🧢 Pet", 60], cowboy: ["🤠 Cowboyhoed", 90], kroon: ["👑 Kroon", 250], feest: ["🥳 Feestmuts", 50], kok: ["👨‍🍳 Koksmuts", 70], viking: ["⚔️ Vikinghelm", 140], oren: ["🐰 Konijnenoren", 80], halo: ["😇 Aureool", 200], tovenaar: ["🧙 Tovenaarshoed", 160], koptelefoon: ["🎧 Koptelefoon", 90] },
+  b: { seizcape: Object.assign(["🌌 Sterrencape", 0], { ex: 1, season: 20, parts: [{ s: "box", c: 3223169, w: 0.5, h: 0.85, d: 0.03, y: -0.18, z: -0.18, r: [0.12, 0, 0] }, { s: "ster", c: 16767053, w: 0.08, h: 0.08, d: 0.02, y: -0.05, z: -0.2, glow: 1 }, { s: "ster", c: 16777215, w: 0.05, h: 0.05, d: 0.02, x: 0.12, y: -0.3, z: -0.2, glow: 1 }] }), halo2: Object.assign(["✨ Glitter-aura", 0], { ex: 1, parts: [{ s: "ring", c: 11032055, w: 1.1, h: 1.1, d: 1.1, y: -0.5, r: [1.57, 0, 0], glow: 1 }] }), drakenvl: Object.assign(["🐉 Drakenvleugels", 0], { ex: 1, parts: [{ s: "kegel", c: 1483594, w: 0.25, h: 0.9, d: 0.05, x: -0.35, y: 0.15, z: -0.2, r: [0, 0, 1.1] }, { s: "kegel", c: 1483594, w: 0.25, h: 0.9, d: 0.05, x: 0.35, y: 0.15, z: -0.2, r: [0, 0, -1.1] }] }), rugzak: ["🎒 Rugzak", 60], cape: ["🦸 Cape", 120], vleugels: ["🪽 Vleugels", 220], jetpack: ["🚀 Jetpack", 260], zwaard: ["🗡️ Zwaard", 150], gitaar: ["🎸 Gitaar", 130] },
+  s: { seizpak: Object.assign(["🏅 Kampioenspak", 0, 8141549], { ex: 1, season: 30 }), regenboog: Object.assign(["🌈 Regenboogpak", 0, 16736162], { ex: 1 }), diamant: Object.assign(["💎 Diamantpak", 0, 6809849], { ex: 1 }), rood: ["🔴 Rood pak", 40, 14041157], groen: ["🟢 Groen pak", 40, 3055195], geel: ["🟡 Geel pak", 40, 15119394], roze: ["🩷 Roze pak", 40, 15228316], zwart: ["⚫ Zwart pak", 60, 2763317], wit: ["⚪ Wit pak", 60, 15263982], goud: ["🏅 Goud pak", 300, 13934615], paars: ["🟣 Paars pak", 40, 9133302] }
 };
+SOLDIER_ITEMS.p = SOLDIER_PETS;
 function soldierDress(S, lk, P) {
   const T = THREE;
   const M = (hex) => _sm(hex), B = (w, h2, d) => _sg("b" + w + "_" + h2 + "_" + d, () => new T.BoxGeometry(w, h2, d));
@@ -2784,6 +2897,17 @@ function soldierDress(S, lk, P) {
     return m;
   };
   const H = S.head, TO = S.torso;
+  const GEO = { box: () => new T.BoxGeometry(1, 1, 1), bol: () => new T.SphereGeometry(0.5, 12, 8), kegel: () => new T.ConeGeometry(0.5, 1, 12), cilinder: () => new T.CylinderGeometry(0.5, 0.5, 1, 12), ring: () => new T.TorusGeometry(0.4, 0.1, 8, 20), ster: () => new T.OctahedronGeometry(0.5) };
+  const custom = (def, par, y0) => {
+    (def.parts || []).forEach((q) => {
+      const g = _sg("cg_" + q.s, GEO[q.s] || GEO.box);
+      const m = new T.Mesh(g, q.glow ? new T.MeshStandardMaterial({ color: q.c, emissive: q.c, emissiveIntensity: 0.7, roughness: 0.4 }) : M(q.c));
+      m.scale.set(q.w || 0.2, q.h || 0.2, q.d || 0.2);
+      m.position.set(q.x || 0, (q.y || 0) + y0, q.z || 0);
+      if (q.r) m.rotation.set(q.r[0] || 0, q.r[1] || 0, q.r[2] || 0);
+      par.add(m);
+    });
+  };
   const sc = lk.s3 && SOLDIER_ITEMS.s[lk.s3];
   if (sc) {
     const c = new T.Color(sc[2]), dk = c.clone().multiplyScalar(0.72);
@@ -2798,7 +2922,11 @@ function soldierDress(S, lk, P) {
     });
   }
   const h = lk.h3;
-  if (h && SOLDIER_ITEMS.h[h]) {
+  const hd = h && SOLDIER_ITEMS.h[h];
+  if (hd && hd.parts) {
+    if (hd.hide !== false) S.helm.forEach((m) => m.visible = false);
+    custom(hd, H, 0.34);
+  } else if (h && SOLDIER_ITEMS.h[h]) {
     const hideHelm = h !== "oren" && h !== "halo" && h !== "koptelefoon";
     if (hideHelm) S.helm.forEach((m) => m.visible = false);
     const Y = 0.34;
@@ -2844,7 +2972,10 @@ function soldierDress(S, lk, P) {
     }
   }
   const b = lk.b3;
-  if (b && SOLDIER_ITEMS.b[b]) {
+  const bd = b && SOLDIER_ITEMS.b[b];
+  if (bd && bd.parts) {
+    custom(bd, TO, 0.3);
+  } else if (b && SOLDIER_ITEMS.b[b]) {
     if (b === "rugzak") {
       add(B(0.36, 0.4, 0.16), 15026253, 0, 0.3, -0.23, TO);
       add(B(0.3, 0.16, 0.05), 12071480, 0, 0.18, -0.32, TO);
@@ -3287,7 +3418,7 @@ function obbyGame(st, net) {
       col = net.pcol(p) || col;
     } catch (e) {
     }
-    const sd = makeSoldier({ variant: i % 3, armband: new V.Color(col).getHex() });
+    const sd = makeSoldier({ variant: i % 3, armband: new V.Color(col).getHex(), lk: p.lk, me: p.id === ME, pid: p.id });
     const root = new V.Group();
     root.add(sd.g);
     const tag = nameTag(p.name || "?");
@@ -6672,7 +6803,7 @@ function hideGame(st, net) {
   function addP(p, i) {
     if (PL[p.id]) return PL[p.id];
     const col = new V.Color(net.pcol ? net.pcol(p) : "#5b4cf5");
-    const sd = typeof makeSoldier === "function" ? makeSoldier({ variant: i % 3, armband: col.getHex(), lk: p.lk, me: p.id === ME }) : null;
+    const sd = typeof makeSoldier === "function" ? makeSoldier({ variant: i % 3, armband: col.getHex(), lk: p.lk, me: p.id === ME, pid: p.id }) : null;
     const root = new V.Group();
     if (sd) root.add(sd.g);
     const tag2 = nameTag(p.name || "?");
@@ -9955,7 +10086,7 @@ function bowlingGame(st, net) {
     const col = p.colHex || (net.pcol ? net.pcol(p) : "#5b4cf5");
     const o = { id: p.id, name: p.name || "?", col, bot, skill: bot ? 0.55 + i * 7919 % 100 / 100 * 0.4 : 0, sd: null };
     const cc = new V.Color(col);
-    o.sd = makeSoldier({ variant: i % 3, armband: cc.getHex() });
+    o.sd = makeSoldier({ variant: i % 3, armband: cc.getHex(), lk: p.lk, me: p.id === ME, pid: p.id });
     o.sd.g.visible = false;
     scene.add(o.sd.g);
     PL[p.id] = o;
@@ -11672,7 +11803,7 @@ function bboxGame(st, net) {
   function avatar(p) {
     if (avG[p.id]) return avG[p.id];
     const g = new V.Group();
-    const sd = makeSoldier({ lk: p.lk, variant: [...String(p.id)].reduce((a, c2) => a + c2.charCodeAt(0), 0) % 3, armband: new V.Color(net.pcol(p) || "#888888").getHex() });
+    const sd = makeSoldier({ pid: p.id, lk: p.lk, variant: [...String(p.id)].reduce((a, c2) => a + c2.charCodeAt(0), 0) % 3, armband: new V.Color(net.pcol(p) || "#888888").getHex() });
     g.add(sd.g);
     const body = sd.torso;
     const head = sprite(p.av || "🙂", 0.42);
@@ -14949,7 +15080,7 @@ const MP = [
       return max;
     }
     function createAvatar(p) {
-      const sd = makeSoldier({ variant: p.team ? 1 : 0, armband: TC[p.team], lk: p.lk, me: p.id === (net.me && net.me.id) }), g = sd.g;
+      const sd = makeSoldier({ variant: p.team ? 1 : 0, armband: TC[p.team], lk: p.lk, me: p.id === (net.me && net.me.id), pid: p.id }), g = sd.g;
       g.userData.sd = sd;
       const gun = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.78), mats.metal);
       gun.position.set(0.1, 0.3, 0.36);
@@ -22352,7 +22483,7 @@ const MP = [
     function mkAv(p) {
       const col = new THREE.Color(net.pcol(p)), G2 = new THREE.Group();
       const vi = [...String(p.id)].reduce((a, c2) => a + c2.charCodeAt(0), 0) % 3;
-      const sd = makeSoldier({ variant: vi, armband: col.getHex(), lk: p.lk });
+      const sd = makeSoldier({ variant: vi, armband: col.getHex(), lk: p.lk, pid: p.id });
       G2.add(sd.g);
       const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tagTex(p), depthWrite: false }));
       tag.scale.set(1.7, 0.425, 1);
@@ -35189,7 +35320,8 @@ const LS = (k, v) => {
 const lkClean = (l) => {
   if (!l || typeof l !== "object") return null;
   const o = {};
-  for (const k of ["acc", "fr", "bg", "h3", "b3", "s3"]) if (typeof l[k] === "string") o[k] = l[k].slice(0, 16);
+  for (const k of ["acc", "fr", "bg", "h3", "b3", "s3", "p3"]) if (typeof l[k] === "string") o[k] = l[k].slice(0, 16);
+  if (typeof l.pl === "number") o.pl = Math.max(1, Math.min(20, l.pl | 0));
   return o;
 };
 const AVATARS = ["🦊", "🐼", "🐸", "🐙", "🦄", "🐯", "🐨", "🐷", "🐵", "🐧", "🦁", "🐶", "🐱", "🦉", "🐰", "🐲", "🦝", "👻", "👽", "🦖", "🐳", "🦋", "🐝", "🍄"];
@@ -59421,7 +59553,7 @@ draw();
   for (const k of ["own", "recent"]) if (!Array.isArray(W[k])) W[k] = [];
   for (const k of ["look", "cnt", "fr", "pend", "ach", "wk", "seen"]) if (!W[k] || typeof W[k] !== "object") W[k] = {};
   const save = () => lsw("spz_wallet", W);
-  window.SPZ_LOOK = () => ({ acc: W.look.acc || "", fr: W.look.fr || "", bg: W.look.bg || "", h3: W.look.h3 || "", b3: W.look.b3 || "", s3: W.look.s3 || "" });
+  window.SPZ_LOOK = () => ({ acc: W.look.acc || "", fr: W.look.fr || "", bg: W.look.bg || "", h3: W.look.h3 || "", b3: W.look.b3 || "", s3: W.look.s3 || "", p3: W.look.p3 || "", pl: Math.max(1, Math.min(20, 1 + Math.floor((W.secs || 0) / 3600))) });
   window.SPZ_AVOK = (a) => AVATARS.indexOf(a) < 24 || W.own.includes("av:" + a) || AV_EXCL.includes(a) && !!(window.SPZ_ADMTOK && SPZ_ADMTOK());
   const cnt = (k, n) => {
     W.cnt[k] = (W.cnt[k] || 0) + (n == null ? 1 : n);
@@ -60172,6 +60304,10 @@ draw();
     const r = seasonRewards()[t - 1];
     if (!r || W.ss.claimed.includes(t) || Math.floor(W.ss.pts / PER) < t) return;
     W.ss.claimed.push(t);
+    try {
+      window.SPZ_SEASON3 && SPZ_SEASON3(t);
+    } catch (e) {
+    }
     if (r.coins) {
       W.coins += r.coins;
       W.earned += r.coins;
@@ -67674,7 +67810,7 @@ html[data-spt="rustig"] .chips button,html[data-spt="rustig"] .mpbn,html[data-sp
     if (!isOwn() && sh) close();
   }, 1500);
   let sh = null, tab = "ranks";
-  const TABS = [["ranks", "👥 Ranks & spelers"], ["site", "🛠️ Site"], ["mall", "🛍️ Winkelcentrum"], ["eco", "🎁 Economie"], ["log", "📜 Logboek"]];
+  const TABS = [["ranks", "👥 Ranks & spelers"], ["site", "🛠️ Site"], ["mall", "🛍️ Winkelcentrum"], ["eco", "🎁 Economie"], ["items", "👕 Items"], ["dash", "📊 Dashboard"], ["log", "📜 Logboek"]];
   function close() {
     if (sh) {
       sh.remove();
@@ -67725,6 +67861,15 @@ html[data-spt="rustig"] .chips button,html[data-spt="rustig"] .mpbn,html[data-sp
         window.SPZ_ABUSE && SPZ_ABUSE.ownerUI(body);
         const p = mk("p", "hnote", "💡 Munten afpakken: 👑 Admin → 🎁 Geven met een negatief bedrag (alleen jij als owner kan dat).");
         body.append(p);
+      } else if (tab === "dash") {
+        if (window.SPZ_S2) {
+          SPZ_S2.dashUI(body);
+          SPZ_S2.reportsAdmin(body);
+          SPZ_S2.quizAdmin(body);
+          SPZ_S2.logUI(body);
+        }
+      } else if (tab === "items") {
+        window.SPZ_ITEMS && SPZ_ITEMS.ownerUI(body);
       } else if (tab === "log") {
         const L = window.SPZ_POWER && SPZ_POWER.getLog ? SPZ_POWER.getLog() : [];
         const d = mk("div", "pw-log");
@@ -67749,6 +67894,16 @@ html[data-spt="rustig"] .chips button,html[data-spt="rustig"] .mpbn,html[data-sp
 })();
 ;
 (function() {
+  const xbox = (n) => {
+    let x = n.querySelector(".pfx");
+    if (!x) {
+      x = document.createElement("div");
+      x.className = "pfx";
+      const p = n.querySelector(".pfb");
+      p ? p.after(x) : n.querySelector(".shp").append(x);
+    }
+    return x;
+  };
   const mk = (t, c, x) => {
     const e = document.createElement(t);
     if (c) e.className = c;
@@ -68608,8 +68763,7 @@ html[data-spt="rustig"] .chips button,html[data-spt="rustig"] .mpbn,html[data-sp
   }).observe(document.body, { childList: true });
   function extra(u, sh) {
     if (!sh) return;
-    const b = sh.querySelector(".pfb");
-    if (!b) return;
+    const b = xbox(sh);
     const so = S();
     const box = mk("div");
     box.style.marginTop = "12px";
@@ -68763,7 +68917,7 @@ html[data-spt="rustig"] .chips button,html[data-spt="rustig"] .mpbn,html[data-sp
     const w = W();
     return w && w.look || {};
   };
-  const field = { h: "h3", b: "b3", s: "s3" };
+  const field = { h: "h3", b: "b3", s: "s3", p: "p3" };
   function equip(cat2, k) {
     const w = W();
     if (!w) return;
@@ -68898,7 +69052,7 @@ html[data-spt="rustig"] .chips button,html[data-spt="rustig"] .mpbn,html[data-sp
     } catch (e) {
       pv.append(mk("p", "hnote", "3D-voorbeeld niet beschikbaar"));
     }
-    const TB = [["h", "🎩 Hoofd"], ["b", "🎒 Rug"], ["s", "🎨 Pakje"]];
+    const TB = [["h", "🎩 Hoofd"], ["b", "🎒 Rug"], ["s", "🎨 Pakje"], ["p", "🐾 Huisdier"]];
     function draw2() {
       coins.textContent = "🪙 " + ((W() || {}).coins || 0);
       tabs.innerHTML = "";
@@ -68913,12 +69067,15 @@ html[data-spt="rustig"] .chips button,html[data-spt="rustig"] .mpbn,html[data-sp
       its.innerHTML = "";
       const L = cur2();
       Object.entries(SOLDIER_ITEMS[tab]).forEach(([k, v]) => {
-        const [lab, price, hex] = v;
+        const [lab, price0, hex] = v;
         const own = owned(tab, k), on = L[field[tab]] === k;
+        const ev = window.SPZ_ITEMS && SPZ_ITEMS.eventPrice(tab, k);
+        if (v.ex && !own && ev == null) return;
+        const price = ev != null ? ev : price0;
         const b = mk("button", "it" + (own ? " own" : "") + (on ? " on" : "") + (tab === "s" ? " swc" : ""));
         const e = mk("span", "e", lab.split(" ")[0]);
         if (tab === "s") e.style.background = "#" + hex.toString(16).padStart(6, "0");
-        b.append(e, mk("b", null, lab.split(" ").slice(1).join(" ")), mk("small", null, on ? "✅ Aan" : own ? "Gekocht · dragen" : "🪙 " + price));
+        b.append(e, mk("b", null, lab.split(" ").slice(1).join(" ")), mk("small", null, on ? "✅ Aan" : own ? v.ex ? "🎁 Exclusief · dragen" : "Gekocht · dragen" : ev != null ? "⏳ Event · 🪙 " + price : "🪙 " + price));
         b.onclick = () => {
           if (!own && !buy(tab, k, price)) return;
           equip(tab, k);
@@ -68930,7 +69087,18 @@ html[data-spt="rustig"] .chips button,html[data-spt="rustig"] .mpbn,html[data-sp
     }
     draw2();
   }
-  window.SPZ_AVATAR = { open };
+  window.SPZ_AVATAR = { open, owned, grant(cat2, k) {
+    const w = W();
+    if (!w) return false;
+    if (!owned(cat2, k)) {
+      w.own.push("a3:" + cat2 + ":" + k);
+      try {
+        S().save();
+      } catch (e) {
+      }
+    }
+    return true;
+  } };
 })();
 window.SPZ_PARTYQ = [
   ["A", "Wat is de hoofdstad van Australië?", "Canberra|Sydney|Melbourne|Perth"],
@@ -69120,6 +69288,12 @@ window.SPZ_PARTYQ = [
     }));
     let onInput = () => {
     };
+    let myQ = [];
+    try {
+      myQ = JSON.parse(localStorage.getItem("sp_partyq") || "[]");
+    } catch (e) {
+    }
+    let onlyMine = false;
     function board() {
       const L = Object.values(P).sort((a, b) => b.sc - a.sc);
       const sb = mk("div", "sb");
@@ -69155,6 +69329,31 @@ window.SPZ_PARTYQ = [
         gs.append(b);
       });
       tv.append(gs);
+      const own = mk("details");
+      own.style.cssText = "width:min(700px,92vw);background:#fff1;border-radius:14px;padding:8px 12px";
+      own.append(mk("summary", null, "✏️ Eigen quizvragen (" + myQ.length + ")"));
+      const ta = mk("textarea");
+      ta.rows = 4;
+      ta.style.cssText = "width:100%;border-radius:10px;font:inherit;padding:8px";
+      ta.placeholder = "Eén per regel: vraag | juist | fout | fout | fout";
+      ta.value = myQ.map((q) => q[1] + " | " + q[2].split("|").join(" | ")).join("\n");
+      ta.addEventListener("keydown", (e) => e.stopPropagation());
+      ta.oninput = () => {
+        myQ = window.SPZ_QPARSE ? SPZ_QPARSE(ta.value) : [];
+        try {
+          localStorage.setItem("sp_partyq", JSON.stringify(myQ));
+        } catch (e) {
+        }
+        own.querySelector("summary").textContent = "✏️ Eigen quizvragen (" + myQ.length + ")";
+      };
+      const only = mk("label");
+      const oi = mk("input");
+      oi.type = "checkbox";
+      oi.checked = onlyMine;
+      oi.onchange = () => onlyMine = oi.checked;
+      only.append(oi, document.createTextNode(" alleen mijn eigen vragen"));
+      own.append(ta, only);
+      tv.append(own);
       tv.append(mk("p", null, "Tip: zet dit scherm op een tv of laptop. 1 tot 12 spelers."));
       send({ ph: "lobby", g: null });
     }
@@ -69184,7 +69383,8 @@ window.SPZ_PARTYQ = [
       send({ ph: "end", win: L[0] ? L[0].n : "" });
     }
     function quiz() {
-      const qs = shuffle(QB).slice(0, 10);
+      const pool = onlyMine && myQ.length ? myQ : QB.concat(window.SPZ_ADMINQ || [], myQ);
+      const qs = (onlyMine ? shuffle(pool) : shuffle(myQ).concat(shuffle(pool.filter((q) => !myQ.includes(q))))).slice(0, 10);
       let i = -1;
       const next = () => {
         i++;
@@ -69583,6 +69783,16 @@ window.SPZ_PARTYQ = [
 })();
 ;
 (function() {
+  const xbox = (n) => {
+    let x = n.querySelector(".pfx");
+    if (!x) {
+      x = document.createElement("div");
+      x.className = "pfx";
+      const p = n.querySelector(".pfb");
+      p ? p.after(x) : n.querySelector(".shp").append(x);
+    }
+    return x;
+  };
   const mk = (t, c, x) => {
     const e = document.createElement(t);
     if (c) e.className = c;
@@ -69958,10 +70168,17 @@ window.SPZ_PARTYQ = [
       e.preventDefault();
       dist = Math.max(6, Math.min(18, dist * (1 + Math.sign(e.deltaY) * 0.1)));
     }, { passive: false });
+    const hooks = [];
     let t = 0;
     const tick = () => {
       if (!alive) return;
       t += 0.016;
+      hooks.forEach((f) => {
+        try {
+          f(0.016);
+        } catch (e) {
+        }
+      });
       fit();
       cam.position.set(Math.sin(yaw) * Math.cos(pitch) * dist, Math.sin(pitch) * dist + 0.5, Math.cos(yaw) * Math.cos(pitch) * dist);
       cam.lookAt(0, 0.8, 0);
@@ -69979,7 +70196,7 @@ window.SPZ_PARTYQ = [
       requestAnimationFrame(tick);
     };
     tick();
-    return { rebuild: shell, stop() {
+    return { sc, hooks, av, camYaw: () => yaw, rebuild: shell, stop() {
       alive = false;
       removeEventListener("pointerup", up);
       try {
@@ -70005,6 +70222,12 @@ window.SPZ_PARTYQ = [
       if (e.target === o) close();
     };
     o.querySelector(".pclose").onclick = close;
+    let stopP = null;
+    const oc0 = close;
+    o.querySelector(".pclose").onclick = () => {
+      stopP && stopP();
+      oc0();
+    };
     if (!own) {
       h3.textContent = "🏠 Kamer laden…";
       try {
@@ -70015,9 +70238,10 @@ window.SPZ_PARTYQ = [
       const off = so.sub("room/" + uid, (t, d) => {
         if (got || !d || !d.r) return;
         got = true;
-        h3.textContent = "🏠 Kamer van " + (d.n || "?");
-        tip.textContent = "Sleep = draaien · scroll = zoomen";
+        h3.textContent = "🎉 Kamerfeest bij " + (d.n || "?");
+        tip.textContent = "WASD/pijltjes = lopen · sleep = draaien · scroll = zoomen";
         S3 = scene3(host, d, null);
+        stopP = party(uid, S3, ctl);
       });
       setTimeout(() => {
         if (!got) h3.textContent = "🏠 Deze speler heeft nog geen kamer";
@@ -70126,19 +70350,202 @@ window.SPZ_PARTYQ = [
         };
         tools.append(x);
       });
+      const pb = mk("button", "btn", "🎉 Kamerfeest starten");
+      pb.style.margin = "6px 0";
+      pb.onclick = () => {
+        if (stopP) return;
+        stopP = party(so.UID, S3, ctl);
+        pb.remove();
+        tip.textContent = "Je vrienden kunnen nu binnenlopen via 🏠 Bekijk kamer op je profiel · WASD = lopen";
+        toast("🎉 Kamerfeest! Vrienden komen binnen via je profiel");
+      };
+      if (!stopP) ctl.append(pb);
       ctl.append(b1, tools);
       const n = mk("p", "hnote", "🏆 Je 5 beste records staan op de plank, je badges hangen aan de muur. Vrienden kunnen je kamer bekijken via je profiel. Munten: 🪙 " + ((W() || {}).coins || 0));
       ctl.append(n);
     }
     bar();
   }
+  function party(hostUid, S3, box) {
+    const so = S();
+    if (!so || !S3) return;
+    try {
+      so.socStart();
+    } catch (e) {
+    }
+    const V = THREE;
+    const me = { x: (Math.random() - 0.5) * 3, z: 1 + Math.random(), r: Math.PI, m: 0, ph: 0 };
+    let p = {};
+    try {
+      p = PROFILE.get() || {};
+    } catch (e) {
+    }
+    const myN = (p.name || "Ik").slice(0, 14);
+    const mySd = makeSoldier({ variant: 0, me: true });
+    S3.sc.add(mySd.g);
+    if (S3.av && hostUid === so.UID) S3.av.g.visible = false;
+    const tag = (t) => {
+      const c = document.createElement("canvas");
+      c.width = 256;
+      c.height = 64;
+      const x = c.getContext("2d");
+      x.font = "bold 28px system-ui";
+      x.textAlign = "center";
+      x.textBaseline = "middle";
+      x.fillStyle = "#0009";
+      x.beginPath();
+      x.roundRect(8, 8, 240, 48, 20);
+      x.fill();
+      x.fillStyle = "#fff";
+      x.fillText(t.slice(0, 22), 128, 33);
+      const sp = new V.Sprite(new V.SpriteMaterial({ map: new V.CanvasTexture(c), depthWrite: false, transparent: true }));
+      sp.scale.set(1.6, 0.4, 1);
+      return sp;
+    };
+    const O = {};
+    const keys2 = /* @__PURE__ */ new Set();
+    const kd = (e) => {
+      if (e.target.tagName === "INPUT") return;
+      const k = String(e.key || "").toLowerCase();
+      if (["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(k)) {
+        keys2.add(k);
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, ku = (e) => keys2.delete(String(e.key || "").toLowerCase());
+    addEventListener("keydown", kd, true);
+    addEventListener("keyup", ku, true);
+    addEventListener("blur", () => keys2.clear());
+    const pad = mk("div", "rmbar");
+    [["◀", "a"], ["▲", "w"], ["▼", "s"], ["▶", "d"]].forEach(([l, k]) => {
+      const b = mk("button", null, l);
+      b.onpointerdown = (e) => {
+        e.preventDefault();
+        keys2.add(k);
+      };
+      b.onpointerup = b.onpointerleave = b.onpointercancel = () => keys2.delete(k);
+      pad.append(b);
+    });
+    const chat = mk("div", "h2in");
+    const ci = mk("input");
+    ci.placeholder = "Zeg iets…";
+    ci.maxLength = 80;
+    const cb = mk("button", "btn", "💬");
+    chat.append(ci, cb);
+    const zone = mk("div");
+    box.before(zone);
+    zone.append(pad, chat);
+    const BAD = /(kut|kanker|hoer|neuk|fuck|shit|bitch|nigg|nazi|klootzak|tering|slet)/i;
+    const bubble = (sd, txt) => {
+      if (sd._bub) {
+        sd.g.remove(sd._bub);
+      }
+      const b = tag("💬 " + txt);
+      b.scale.set(2.4, 0.6, 1);
+      b.position.y = 2.75;
+      sd.g.add(b);
+      sd._bub = b;
+      clearTimeout(sd._bt);
+      sd._bt = setTimeout(() => {
+        sd.g.remove(b);
+        sd._bub = null;
+      }, 4500);
+    };
+    const say = () => {
+      const t = ci.value.trim();
+      if (!t) return;
+      if (BAD.test(t)) {
+        toast("Hou het vriendelijk 🙂");
+        return;
+      }
+      ci.value = "";
+      bubble(mySd, t);
+      so.pub("rp/" + hostUid, { u: so.UID, c: t, ts: Date.now() }, false);
+    };
+    cb.onclick = say;
+    ci.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") say();
+    });
+    const off = so.sub("rp/" + hostUid, (t, d) => {
+      if (!d || !d.u || d.u === so.UID) return;
+      let o = O[d.u];
+      if (!o && d.n) {
+        const sd = makeSoldier({ variant: 1, lk: d.lk || void 0, pid: d.u });
+        const tg = tag(d.n);
+        tg.position.y = 2.25;
+        sd.g.add(tg);
+        S3.sc.add(sd.g);
+        o = O[d.u] = { sd, x: d.x || 0, z: d.z || 0, tx: d.x || 0, tz: d.z || 0, r: 0, m: 0, ph: 0, seen: Date.now(), n: d.n };
+        toast("🎉 " + d.n + " is er!");
+      }
+      if (!o) return;
+      o.seen = Date.now();
+      if (d.c) {
+        bubble(o.sd, String(d.c).slice(0, 80));
+        return;
+      }
+      o.tx = d.x;
+      o.tz = d.z;
+      o.r = d.r;
+      o.m = d.m;
+    }) || (() => {
+    });
+    let sendT = 0;
+    const lk = typeof SPZ_LOOK === "function" ? SPZ_LOOK() : null;
+    S3.hooks.push((dt) => {
+      let fx = 0, fz = 0;
+      if (keys2.has("w") || keys2.has("arrowup")) fz -= 1;
+      if (keys2.has("s") || keys2.has("arrowdown")) fz += 1;
+      if (keys2.has("a") || keys2.has("arrowleft")) fx -= 1;
+      if (keys2.has("d") || keys2.has("arrowright")) fx += 1;
+      const y = S3.camYaw();
+      const l = Math.hypot(fx, fz);
+      me.m = l > 0.1 ? 1 : 0;
+      if (me.m) {
+        const cs = Math.cos(y), sn = Math.sin(y);
+        const mx = (fx * cs + fz * sn) / l, mz = (-fx * sn + fz * cs) / l;
+        me.x = Math.max(-3.6, Math.min(3.6, me.x + mx * dt * 2.6));
+        me.z = Math.max(-3.6, Math.min(3.6, me.z + mz * dt * 2.6));
+        me.r = Math.atan2(mx, mz);
+      }
+      me.ph += dt * (me.m ? 10 : 0);
+      mySd.g.position.set(me.x, 0, me.z);
+      mySd.g.rotation.y = me.r;
+      animateSoldier(mySd, me.ph, me.m);
+      if ((sendT -= dt) <= 0) {
+        sendT = 0.2;
+        so.pub("rp/" + hostUid, { u: so.UID, n: myN, lk, x: +me.x.toFixed(2), z: +me.z.toFixed(2), r: +me.r.toFixed(2), m: me.m, ts: Date.now() }, false);
+      }
+      for (const [u, o] of Object.entries(O)) {
+        if (Date.now() - o.seen > 7e3) {
+          S3.sc.remove(o.sd.g);
+          delete O[u];
+          continue;
+        }
+        const k = Math.min(1, dt * 8);
+        const ox = o.x, oz = o.z;
+        o.x += (o.tx - o.x) * k;
+        o.z += (o.tz - o.z) * k;
+        const mv = Math.hypot(o.x - ox, o.z - oz) > 3e-3;
+        o.ph += dt * (mv ? 10 : 0);
+        o.sd.g.position.set(o.x, 0, o.z);
+        o.sd.g.rotation.y = o.r || 0;
+        animateSoldier(o.sd, o.ph, mv ? 1 : 0);
+      }
+    });
+    return () => {
+      off();
+      removeEventListener("keydown", kd, true);
+      removeEventListener("keyup", ku, true);
+    };
+  }
   new MutationObserver((ms) => {
     ms.forEach((m) => m.addedNodes.forEach((n) => {
       if (n.nodeType === 1 && n.classList && n.classList.contains("hubs") && n.dataset.uid && !n._rm) {
         n._rm = 1;
         setTimeout(() => {
-          const b = n.querySelector(".pfb");
-          if (!b) return;
+          const b = xbox(n);
           const x = mk("button", "btn sec", "🏠 Bekijk kamer");
           x.style.margin = "8px 0";
           x.onclick = () => {
@@ -70151,6 +70558,1224 @@ window.SPZ_PARTYQ = [
     }));
   }).observe(document.body, { childList: true });
   window.SPZ_ROOM = { open, publish };
+})();
+;
+(function() {
+  const mk = (t, c, x) => {
+    const e = document.createElement(t);
+    if (c) e.className = c;
+    if (x != null) e.textContent = x;
+    return e;
+  };
+  const S = () => window.SPZ_SOC, A = () => window.SPZ_ADM, toast = (t, b) => {
+    try {
+      xpToast(t, b !== false);
+    } catch (e) {
+    }
+  };
+  if (typeof SOLDIER_ITEMS === "undefined") return;
+  const isOwn = () => {
+    try {
+      return !!A().isOwn();
+    } catch (e) {
+      return false;
+    }
+  }, isAdm = () => {
+    try {
+      return !!(window.SPZ_ADMTOK && SPZ_ADMTOK()) || isOwn();
+    } catch (e) {
+      return false;
+    }
+  };
+  const valid = (d) => {
+    const a = A();
+    return !!(d && a && (d.otk === a.OWNTOK || d.tok === a.TOK));
+  };
+  const LS2 = { get(k, d) {
+    try {
+      const v = localStorage.getItem(k);
+      return v == null ? d : JSON.parse(v);
+    } catch (e) {
+      return d;
+    }
+  }, set(k, v) {
+    try {
+      localStorage.setItem(k, JSON.stringify(v));
+    } catch (e) {
+    }
+  } };
+  const sign = () => {
+    const a = A();
+    return isOwn() ? { otk: a.OWNTOK } : { tok: a.TOK };
+  };
+  const CAT = { h: "🎩 Hoofd", b: "🎒 Rug", s: "🎨 Pakje" };
+  const label = (c, k) => {
+    const v = SOLDIER_ITEMS[c] && SOLDIER_ITEMS[c][k];
+    return v ? v[0] : k;
+  };
+  let custom = { h: {}, b: {} };
+  function applyCustom(d) {
+    ["h", "b"].forEach((c) => {
+      Object.keys(SOLDIER_ITEMS[c]).filter((k) => k.startsWith("c_")).forEach((k) => delete SOLDIER_ITEMS[c][k]);
+      Object.entries(d && d.items && d.items[c] || {}).forEach(([k, v]) => {
+        if (!/^c_[a-z0-9]{1,12}$/.test(k) || !v || !Array.isArray(v.parts)) return;
+        const it = Object.assign([String(v.e || "✨") + " " + String(v.n || "Item").slice(0, 20), Math.max(0, Math.min(5e3, +v.p || 0))], { parts: v.parts.slice(0, 8), ex: v.ex ? 1 : 0, hide: v.hide !== false, c: 1 });
+        SOLDIER_ITEMS[c][k] = it;
+      });
+    });
+    custom = d && d.items || { h: {}, b: {} };
+  }
+  let EV = null;
+  const eventPrice = (c, k) => {
+    if (!EV || Date.now() > EV.until) return null;
+    const x = (EV.list || []).find((q) => q[0] === c && q[1] === k);
+    return x ? Math.max(0, +x[2] || 0) : null;
+  };
+  const got = new Set(LS2.get("sp_gift3", []));
+  function receive(d, from) {
+    if (!valid(d) || !d.ts || got.has(d.ts)) return;
+    got.add(d.ts);
+    LS2.set("sp_gift3", [...got].slice(-80));
+    let n = [];
+    (d.items || []).forEach(([c, k]) => {
+      if (SOLDIER_ITEMS[c] && SOLDIER_ITEMS[c][k] && window.SPZ_AVATAR) {
+        SPZ_AVATAR.grant(c, k);
+        n.push(label(c, k));
+      }
+    });
+    if (d.coins > 0) {
+      try {
+        S().addCoins(Math.min(5e3, d.coins), "🎁 cadeau");
+      } catch (e) {
+      }
+    }
+    if (!n.length && !(d.coins > 0)) return;
+    const o = mk("div", "sheet hubs");
+    o.innerHTML = '<div class="shp" role="dialog"><button class="pclose">✕</button><div class="ab" style="text-align:center"><div style="font-size:60px">🎁</div><h3></h3><p></p><button class="btn">👕 Bekijk in de avatar-winkel</button></div></div>';
+    o.querySelector("h3").textContent = "Je kreeg een cadeau van " + (d.otk ? "de 💎 owner" : "een 👑 admin") + "!";
+    o.querySelector("p").textContent = (n.length ? n.join(", ") : "") + (d.coins > 0 ? (n.length ? " + " : "") + "🪙 " + d.coins : "") + (d.msg ? ' — "' + String(d.msg).slice(0, 80) + '"' : "") + (n.length ? " · Dit kan je nergens kopen!" : "");
+    o.querySelector(".pclose").onclick = () => o.remove();
+    o.querySelector(".btn").onclick = () => {
+      o.remove();
+      try {
+        SPZ_AVATAR.open();
+      } catch (e) {
+      }
+    };
+    document.body.append(o);
+    try {
+      confetti(o, 1.2);
+    } catch (e) {
+    }
+    try {
+      beep(784, 0.15, "triangle", 0.06);
+      setTimeout(() => beep(1046, 0.25, "triangle", 0.06), 150);
+    } catch (e) {
+    }
+  }
+  setTimeout(function boot() {
+    const so = S();
+    if (!so || !so.UID || !so.sub) {
+      setTimeout(boot, 1500);
+      return;
+    }
+    try {
+      so.socStart();
+    } catch (e) {
+    }
+    so.sub("ctl/citems", (t, d) => {
+      if (d && valid(d) && d.otk) applyCustom(d);
+    });
+    so.sub("ctl/evit", (t, d) => {
+      EV = d && valid(d) && d.until > Date.now() ? d : null;
+    });
+    so.sub("gift3/" + so.UID, (t, d) => receive(d));
+    so.sub("gift3all", (t, d) => receive(d));
+  }, 2500);
+  function allItems(exOnly) {
+    const r = [];
+    ["h", "b", "s"].forEach((c) => Object.entries(SOLDIER_ITEMS[c]).forEach(([k, v]) => {
+      if (!exOnly || v.ex) r.push([c, k, v]);
+    }));
+    return r;
+  }
+  function giveUI(b) {
+    if (!isAdm()) return;
+    b.append(mk("div", "hsec", "🎁 Exclusieve items geven"));
+    b.append(mk("p", "hnote", "Deze items kan je nergens kopen — alleen krijgen van een admin/owner. De speler krijgt een pop-up met confetti."));
+    const who = mk("input", "adm-in");
+    who.placeholder = "Vriendcode (bv. ab12-cd34) — leeg = iedereen";
+    who.addEventListener("keydown", (e) => e.stopPropagation());
+    const sel = mk("select", "adm-in");
+    allItems(!isOwn()).forEach(([c, k, v]) => {
+      const o = mk("option", null, CAT[c] + " · " + v[0] + (v.ex ? " (exclusief)" : ""));
+      o.value = c + "|" + k;
+      sel.append(o);
+    });
+    const msg = mk("input", "adm-in");
+    msg.placeholder = "Berichtje (optioneel)";
+    msg.maxLength = 80;
+    msg.addEventListener("keydown", (e) => e.stopPropagation());
+    const go = mk("button", "btn", "🎁 Geven");
+    go.onclick = () => {
+      const so = S();
+      if (!so) return;
+      try {
+        so.socStart();
+      } catch (e) {
+      }
+      const [c, k] = sel.value.split("|");
+      const u = who.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const d = Object.assign({ items: [[c, k]], ts: Date.now(), msg: msg.value.trim() }, sign());
+      if (!u) {
+        if (!isOwn()) {
+          toast("Iedereen tegelijk kan alleen de owner");
+          return;
+        }
+        so.pub("gift3all", d, true);
+        toast("🎁 " + label(c, k) + " voor iedereen!");
+      } else {
+        so.pub("gift3/" + u, d, true);
+        toast("🎁 " + label(c, k) + " gegeven aan " + u);
+      }
+      try {
+        SPZ_POWER.log && SPZ_POWER.log("🎁 item " + k + " → " + (u || "iedereen"));
+      } catch (e) {
+      }
+    };
+    [who, sel, msg, go].forEach((x) => {
+      x.style.display = "block";
+      x.style.margin = "6px 0";
+      x.style.width = "100%";
+    });
+    b.append(who, sel, msg, go);
+  }
+  function eventUI(b) {
+    if (!isOwn()) return;
+    b.append(mk("div", "hsec", "⏳ Item-event"));
+    b.append(mk("p", "hnote", "Zet exclusieve items tijdelijk te koop in de avatar-winkel (bv. Halloween-week)."));
+    const box = mk("div");
+    box.style.cssText = "max-height:180px;overflow:auto;border-radius:10px;background:var(--bg);padding:6px";
+    const chk = [];
+    allItems(true).forEach(([c, k, v]) => {
+      const l = mk("label");
+      l.style.cssText = "display:flex;gap:8px;align-items:center;padding:3px 0";
+      const i = mk("input");
+      i.type = "checkbox";
+      i.value = c + "|" + k;
+      const pr = mk("input");
+      pr.type = "number";
+      pr.value = 150;
+      pr.style.width = "70px";
+      pr.addEventListener("keydown", (e) => e.stopPropagation());
+      l.append(i, mk("span", null, v[0]), pr, mk("small", null, "munten"));
+      chk.push([i, pr]);
+      box.append(l);
+    });
+    const hrs = mk("select", "adm-in");
+    [[24, "1 dag"], [72, "3 dagen"], [168, "1 week"], [336, "2 weken"]].forEach(([h, l]) => {
+      const o = mk("option", null, l);
+      o.value = h;
+      hrs.append(o);
+    });
+    const go = mk("button", "btn", "⏳ Start event");
+    go.onclick = () => {
+      const list = chk.filter(([i]) => i.checked).map(([i, p]) => {
+        const [c, k] = i.value.split("|");
+        return [c, k, +p.value || 0];
+      });
+      if (!list.length) {
+        toast("Kies minstens 1 item");
+        return;
+      }
+      S().pub("ctl/evit", Object.assign({ list, until: Date.now() + hrs.value * 36e5, ts: Date.now() }, sign()), true);
+      toast("⏳ Event gestart!");
+    };
+    const stop2 = mk("button", "btn sec", "Event stoppen");
+    stop2.onclick = () => {
+      S().pub("ctl/evit", null, true);
+      EV = null;
+      toast("Event gestopt");
+    };
+    const st = mk("p", "hnote", EV && Date.now() < EV.until ? "Nu bezig tot " + new Date(EV.until).toLocaleString().slice(0, -3) + " · " + EV.list.length + " items" : "Geen event bezig");
+    b.append(box, hrs, go, stop2, st);
+  }
+  function makerUI(b) {
+    if (!isOwn()) return;
+    b.append(mk("div", "hsec", "🧪 Item-maker"));
+    b.append(mk("p", "hnote", 'Bouw een eigen hoed of rug-item uit vormen. Kies een prijs (in de winkel) of "exclusief" (alleen te geven).'));
+    const wrap = mk("div");
+    wrap.style.cssText = "display:grid;grid-template-columns:180px 1fr;gap:10px";
+    const pv = mk("div");
+    pv.style.cssText = "height:220px;border-radius:14px;background:linear-gradient(160deg,#5b4cf5,#1e1b3a);overflow:hidden";
+    const form = mk("div");
+    wrap.append(pv, form);
+    b.append(wrap);
+    let it = { id: "c_" + Math.random().toString(36).slice(2, 8), cat: "h", e: "✨", n: "Mijn item", p: 100, ex: 0, hide: true, parts: [{ s: "kegel", c: 16736162, w: 0.3, h: 0.4, d: 0.3, y: 0.15 }] };
+    const inp = (ph, v, f, type) => {
+      const i = mk("input", "adm-in");
+      i.placeholder = ph;
+      i.value = v;
+      if (type) i.type = type;
+      i.addEventListener("keydown", (e) => e.stopPropagation());
+      i.oninput = () => {
+        f(i.value);
+        prev();
+      };
+      i.style.cssText = "width:100%;margin:3px 0";
+      return i;
+    };
+    let pr = null;
+    try {
+      const V = THREE;
+      const r = new V.WebGLRenderer({ antialias: true, alpha: true });
+      r.setSize(180, 220);
+      pv.append(r.domElement);
+      const sc = new V.Scene();
+      sc.add(new V.HemisphereLight(16777215, 5588070, 1.6));
+      const dl = new V.DirectionalLight(16777215, 1.3);
+      dl.position.set(2, 3, 3);
+      sc.add(dl);
+      const cam = new V.PerspectiveCamera(35, 180 / 220, 0.1, 30);
+      cam.position.set(0, 2, 2.6);
+      cam.lookAt(0, 1.55, 0);
+      const g = new V.Group();
+      sc.add(g);
+      let a = 0, alive = true;
+      pr = () => {
+        g.clear();
+        SOLDIER_ITEMS[it.cat]["c_tmp"] = Object.assign([it.e + " " + it.n, it.p], { parts: it.parts, hide: it.hide });
+        const lk = {};
+        lk[it.cat === "h" ? "h3" : "b3"] = "c_tmp";
+        g.add(makeSoldier({ lk }).g);
+        delete SOLDIER_ITEMS[it.cat]["c_tmp"];
+      };
+      const tk = () => {
+        if (!alive || !pv.isConnected) {
+          alive = false;
+          try {
+            r.dispose();
+          } catch (e) {
+          }
+          return;
+        }
+        a += 0.01;
+        g.rotation.y = a;
+        cam.position.set(Math.sin(a * 0) * 0, it.cat === "h" ? 2 : 1.6, it.cat === "h" ? 2.6 : -2.8);
+        cam.lookAt(0, it.cat === "h" ? 1.55 : 1.25, 0);
+        r.render(sc, cam);
+        requestAnimationFrame(tk);
+      };
+      tk();
+    } catch (e) {
+    }
+    const prev = () => {
+      try {
+        pr && pr();
+      } catch (e) {
+      }
+    };
+    function draw2() {
+      form.innerHTML = "";
+      const row = mk("div");
+      row.style.cssText = "display:flex;gap:6px";
+      const cs = mk("select", "adm-in");
+      [["h", "🎩 Hoofd"], ["b", "🎒 Rug"]].forEach(([k, l]) => {
+        const o = mk("option", null, l);
+        o.value = k;
+        cs.append(o);
+      });
+      cs.value = it.cat;
+      cs.onchange = () => {
+        it.cat = cs.value;
+        prev();
+      };
+      row.append(cs, inp("Emoji", it.e, (v) => it.e = v.slice(0, 4)));
+      form.append(row, inp("Naam", it.n, (v) => it.n = v.slice(0, 20)));
+      const pr2 = mk("div");
+      pr2.style.cssText = "display:flex;gap:6px;align-items:center";
+      const p = inp("Prijs", it.p, (v) => it.p = +v || 0, "number");
+      p.style.width = "90px";
+      const ex = mk("label");
+      const exi = mk("input");
+      exi.type = "checkbox";
+      exi.checked = !!it.ex;
+      exi.onchange = () => it.ex = exi.checked ? 1 : 0;
+      ex.append(exi, document.createTextNode(" 🎁 exclusief"));
+      const hh = mk("label");
+      const hhi = mk("input");
+      hhi.type = "checkbox";
+      hhi.checked = !!it.hide;
+      hhi.onchange = () => {
+        it.hide = hhi.checked;
+        prev();
+      };
+      hh.append(hhi, document.createTextNode(" helm weg"));
+      pr2.append(p, ex, hh);
+      form.append(pr2);
+      it.parts.forEach((q, i) => {
+        const r = mk("div");
+        r.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;align-items:center;background:var(--bg);border-radius:10px;padding:5px;margin:4px 0";
+        const sh = mk("select");
+        ["box", "bol", "kegel", "cilinder", "ring", "ster"].forEach((s) => {
+          const o = mk("option", null, s);
+          o.value = s;
+          sh.append(o);
+        });
+        sh.value = q.s;
+        sh.onchange = () => {
+          q.s = sh.value;
+          prev();
+        };
+        const col = mk("input");
+        col.type = "color";
+        col.value = "#" + (q.c >>> 0).toString(16).padStart(6, "0");
+        col.oninput = () => {
+          q.c = parseInt(col.value.slice(1), 16);
+          prev();
+        };
+        r.append(sh, col);
+        [["w", "breed"], ["h", "hoog"], ["d", "diep"], ["x", "x"], ["y", "y"], ["z", "z"]].forEach(([k, l]) => {
+          const s = mk("input");
+          s.type = "range";
+          s.min = k.length && "whd".includes(k) ? 0.02 : -0.6;
+          s.max = "whd".includes(k) ? 1.2 : 0.8;
+          s.step = 0.01;
+          s.value = q[k] || 0;
+          s.title = l;
+          s.style.width = "60px";
+          s.oninput = () => {
+            q[k] = +s.value;
+            prev();
+          };
+          r.append(mk("small", null, l), s);
+        });
+        const gl = mk("label");
+        const gli = mk("input");
+        gli.type = "checkbox";
+        gli.checked = !!q.glow;
+        gli.onchange = () => {
+          q.glow = gli.checked ? 1 : 0;
+          prev();
+        };
+        gl.append(gli, document.createTextNode("✨"));
+        const del = mk("button", "btn sec", "🗑️");
+        del.onclick = () => {
+          it.parts.splice(i, 1);
+          draw2();
+          prev();
+        };
+        r.append(gl, del);
+        form.append(r);
+      });
+      const add = mk("button", "btn sec", "➕ Vorm toevoegen");
+      add.onclick = () => {
+        if (it.parts.length >= 8) return;
+        it.parts.push({ s: "box", c: 3113197, w: 0.2, h: 0.2, d: 0.2, y: 0.2 });
+        draw2();
+        prev();
+      };
+      const save = mk("button", "btn", "💾 Opslaan voor iedereen");
+      save.onclick = () => {
+        const items = JSON.parse(JSON.stringify(custom || { h: {}, b: {} }));
+        items.h = items.h || {};
+        items.b = items.b || {};
+        delete items.h[it.id];
+        delete items.b[it.id];
+        items[it.cat][it.id] = { n: it.n, e: it.e, p: it.p, ex: it.ex, hide: it.hide, parts: it.parts };
+        S().pub("ctl/citems", Object.assign({ items, ts: Date.now() }, sign()), true);
+        applyCustom({ items });
+        toast("🧪 " + it.n + " staat " + (it.ex ? "klaar om te geven" : "in de winkel") + "!");
+        it = { id: "c_" + Math.random().toString(36).slice(2, 8), cat: it.cat, e: "✨", n: "Nieuw item", p: 100, ex: 0, hide: true, parts: [{ s: "bol", c: 16767053, w: 0.3, h: 0.3, d: 0.3, y: 0.15 }] };
+        draw2();
+        prev();
+        list();
+      };
+      form.append(add, save);
+    }
+    const L = mk("div");
+    b.append(L);
+    function list() {
+      L.innerHTML = "";
+      const all = [...Object.entries(custom.h || {}).map((x) => ["h", ...x]), ...Object.entries(custom.b || {}).map((x) => ["b", ...x])];
+      if (!all.length) return;
+      L.append(mk("p", "hnote", "Jouw items:"));
+      all.forEach(([c, k, v]) => {
+        const r = mk("div");
+        r.style.cssText = "display:flex;gap:6px;align-items:center;margin:3px 0";
+        r.append(mk("span", null, v.e + " " + v.n + (v.ex ? " · 🎁" : " · 🪙 " + v.p)));
+        const ed = mk("button", "btn sec", "✏️");
+        ed.onclick = () => {
+          it = Object.assign({ id: k, cat: c }, JSON.parse(JSON.stringify(v)));
+          draw2();
+          prev();
+        };
+        const rm = mk("button", "btn sec", "🗑️");
+        rm.onclick = () => {
+          const items = JSON.parse(JSON.stringify(custom));
+          delete items[c][k];
+          S().pub("ctl/citems", Object.assign({ items, ts: Date.now() }, sign()), true);
+          applyCustom({ items });
+          list();
+        };
+        r.append(ed, rm);
+        L.append(r);
+      });
+    }
+    draw2();
+    setTimeout(prev, 50);
+    list();
+  }
+  if (window.SPZ_POWER) {
+    const f1 = SPZ_POWER.site;
+    if (typeof f1 === "function") SPZ_POWER.site = function(b) {
+      const r = f1.apply(this, arguments);
+      try {
+        giveUI(b);
+      } catch (e) {
+      }
+      return r;
+    };
+  }
+  window.SPZ_SEASON3 = (t) => {
+    ["h", "b", "s"].forEach((c) => Object.entries(SOLDIER_ITEMS[c]).forEach(([k, v]) => {
+      if (v.season === t && window.SPZ_AVATAR && !SPZ_AVATAR.owned(c, k)) {
+        SPZ_AVATAR.grant(c, k);
+        toast("🏅 Seizoensbeloning: " + v[0] + " (exclusief!)");
+      }
+    }));
+  };
+  window.SPZ_ITEMS = { eventPrice, receive, applyCustom, ownerUI(b) {
+    giveUI(b);
+    eventUI(b);
+    makerUI(b);
+  } };
+})();
+;
+(function() {
+  if (typeof SOLDIER_LIVE === "undefined") return;
+  const mk = (t, c, x) => {
+    const e = document.createElement(t);
+    if (c) e.className = c;
+    if (x != null) e.textContent = x;
+    return e;
+  };
+  const EM = [["👋", "Zwaaien", "wave"], ["💃", "Dansen", "dance"], ["🤣", "Lachen", "bounce"], ["👍", "Duim", "wave"], ["😢", "Huilen", "sad"], ["🔥", "Vuur", "bounce"], ["🎉", "Feest", "dance"], ["😎", "Cool", "cool"]];
+  const css = mk("style");
+  css.textContent = `#emob{position:fixed;right:14px;bottom:150px;z-index:61;width:48px;height:48px;border-radius:50%;border:0;font-size:24px;cursor:pointer;background:linear-gradient(135deg,#ffd84d,#ff8a00);box-shadow:0 6px 18px #ff8a0088;display:none}
+#emow{position:fixed;right:70px;bottom:120px;z-index:61;display:none;grid-template-columns:repeat(4,52px);gap:6px;background:#0b0a18e6;padding:8px;border-radius:18px}#emow button{border:0;background:#fff1;border-radius:12px;font-size:26px;height:52px;cursor:pointer}#emow button:hover{background:#fff3}`;
+  document.head.append(css);
+  const b = mk("button", "", "😀");
+  b.id = "emob";
+  b.title = "Emotes";
+  const w = mk("div");
+  w.id = "emow";
+  document.body.append(b, w);
+  EM.forEach(([e, l, a], i) => {
+    const x = mk("button", "", e);
+    x.title = l + " (" + (i + 1) + " met Alt)";
+    x.onclick = () => {
+      fire(e, a);
+      w.style.display = "none";
+    };
+    w.append(x);
+  });
+  b.onclick = () => {
+    w.style.display = w.style.display === "grid" ? "none" : "grid";
+  };
+  addEventListener("keydown", (e) => {
+    if (!e.altKey) return;
+    const n = +e.key;
+    if (n >= 1 && n <= 8 && mine()) {
+      e.preventDefault();
+      fire(EM[n - 1][0], EM[n - 1][2]);
+    }
+  });
+  const alive = (s) => {
+    let o = s.g;
+    while (o.parent) o = o.parent;
+    return o.isScene && s.g.parent;
+  };
+  const mine = () => SOLDIER_LIVE.filter((s) => s.me && alive(s)).pop();
+  setInterval(() => {
+    const inGame = document.getElementById("stage") && document.getElementById("stage").offsetParent;
+    b.style.display = inGame && mine() ? "block" : "none";
+    if (b.style.display === "none") w.style.display = "none";
+  }, 800);
+  const TEX = {};
+  const tex = (e) => TEX[e] || (TEX[e] = (() => {
+    const c = document.createElement("canvas");
+    c.width = c.height = 128;
+    const x = c.getContext("2d");
+    x.fillStyle = "#fff";
+    x.beginPath();
+    x.arc(64, 58, 52, 0, 7);
+    x.fill();
+    x.beginPath();
+    x.moveTo(52, 104);
+    x.lineTo(64, 124);
+    x.lineTo(76, 104);
+    x.fill();
+    x.font = "64px system-ui";
+    x.textAlign = "center";
+    x.textBaseline = "middle";
+    x.fillText(e, 64, 60);
+    return new THREE.CanvasTexture(c);
+  })());
+  const ACT = [];
+  function play(sd, e, a) {
+    if (!sd) return;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex(e), depthWrite: false, transparent: true }));
+    sp.scale.set(0.7, 0.7, 1);
+    sp.position.y = 2.55;
+    sd.g.add(sp);
+    ACT.push({ sd, sp, a, t: 0 });
+  }
+  (function tick() {
+    requestAnimationFrame(tick);
+    for (let i = ACT.length - 1; i >= 0; i--) {
+      const q = ACT[i];
+      q.t += 1 / 60;
+      const s = q.sd, t = q.t;
+      if (q.a === "wave") {
+        s.armR.rotation.z = -2.4 + Math.sin(t * 12) * 0.4;
+      } else if (q.a === "dance") {
+        s.torso.rotation.y = Math.sin(t * 8) * 0.5;
+        s.armL.rotation.z = 1.2 + Math.sin(t * 8) * 0.6;
+        s.armR.rotation.z = -1.2 - Math.sin(t * 8) * 0.6;
+        s.torso.position.y = 1.02 + Math.abs(Math.sin(t * 8)) * 0.08;
+      } else if (q.a === "bounce") {
+        s.torso.position.y = 1.02 + Math.abs(Math.sin(t * 10)) * 0.12;
+      } else if (q.a === "sad") {
+        s.head.rotation.x = 0.4;
+      } else if (q.a === "cool") {
+        s.armL.rotation.z = 0.4;
+        s.armR.rotation.z = -0.4;
+      }
+      q.sp.position.y = 2.55 + Math.sin(t * 4) * 0.05;
+      q.sp.material.opacity = t > 2.6 ? Math.max(0, 1 - (t - 2.6) / 0.4) : Math.min(1, t * 5);
+      if (t > 3) {
+        q.sp.parent && q.sp.parent.remove(q.sp);
+        q.sp.material.dispose();
+        s.armR.rotation.z = 0;
+        s.armL.rotation.z = 0;
+        s.torso.rotation.y = 0;
+        s.torso.position.y = 1.02;
+        s.head.rotation.x = 0;
+        ACT.splice(i, 1);
+      }
+    }
+  })();
+  let subCode = null, off = null;
+  const S = () => window.SPZ_SOC;
+  const room = () => {
+    try {
+      return typeof NET !== "undefined" && NET.code && NET.players && NET.players.length > 1 ? NET.code : null;
+    } catch (e) {
+      return null;
+    }
+  };
+  const myPid = () => {
+    try {
+      return NET.me.id;
+    } catch (e) {
+      return null;
+    }
+  };
+  setInterval(() => {
+    const c = room();
+    if (c === subCode) return;
+    try {
+      off && off();
+    } catch (e) {
+    }
+    off = null;
+    subCode = c;
+    if (c && S()) {
+      try {
+        S().socStart();
+      } catch (e) {
+      }
+      off = S().sub("emo/" + c, (t, d) => {
+        if (!d || d.pid === myPid()) return;
+        const sd = SOLDIER_LIVE.filter((s) => s.pid === d.pid && alive(s)).pop();
+        if (sd && EM.some((x) => x[0] === d.e)) play(sd, d.e, d.a);
+      });
+    }
+  }, 1500);
+  let last = 0;
+  function fire(e, a) {
+    if (Date.now() - last < 1200) return;
+    last = Date.now();
+    play(mine(), e, a);
+    try {
+      beep(660, 0.06, "triangle", 0.04);
+    } catch (x) {
+    }
+    const c = room();
+    if (c && S()) S().pub("emo/" + c, { pid: myPid(), e, a, ts: Date.now() }, false);
+  }
+  window.SPZ_EMOTE = { fire, play };
+})();
+;
+(function() {
+  const xbox = (n) => {
+    let x = n.querySelector(".pfx");
+    if (!x) {
+      x = document.createElement("div");
+      x.className = "pfx";
+      const p = n.querySelector(".pfb");
+      p ? p.after(x) : n.querySelector(".shp").append(x);
+    }
+    return x;
+  };
+  const mk = (t, c, x) => {
+    const e = document.createElement(t);
+    if (c) e.className = c;
+    if (x != null) e.textContent = x;
+    return e;
+  };
+  const S = () => window.SPZ_SOC, A = () => window.SPZ_ADM, toast = (t) => {
+    try {
+      xpToast(t, true);
+    } catch (e) {
+    }
+  };
+  const isOwn = () => {
+    try {
+      return !!A().isOwn();
+    } catch (e) {
+      return false;
+    }
+  }, isAdm = () => {
+    try {
+      return !!(window.SPZ_ADMTOK && SPZ_ADMTOK()) || isOwn();
+    } catch (e) {
+      return false;
+    }
+  }, isDev = () => {
+    try {
+      return !!A().isDev() || isAdm();
+    } catch (e) {
+      return isAdm();
+    }
+  };
+  const sign = () => {
+    const a = A();
+    return isOwn() ? { otk: a.OWNTOK } : { tok: a.TOK };
+  };
+  const valid = (d) => {
+    const a = A();
+    return !!(d && a && (d.otk === a.OWNTOK || d.tok === a.TOK));
+  };
+  const LS2 = { get(k, d) {
+    try {
+      const v = localStorage.getItem(k);
+      return v == null ? d : JSON.parse(v);
+    } catch (e) {
+      return d;
+    }
+  }, set(k, v) {
+    try {
+      localStorage.setItem(k, JSON.stringify(v));
+    } catch (e) {
+    }
+  } };
+  const myName = () => {
+    try {
+      return (PROFILE.get().name || "Speler").slice(0, 16);
+    } catch (e) {
+      return "Speler";
+    }
+  };
+  const W = () => S() && S().W;
+  const boot = (f) => setTimeout(function b() {
+    const so = S();
+    if (!so || !so.UID || !so.sub) {
+      setTimeout(b, 1500);
+      return;
+    }
+    try {
+      so.socStart();
+    } catch (e) {
+    }
+    f(so);
+  }, 2600);
+  const itemsOf = (w) => (w && w.own || []).filter((x) => /^a3:[hbsp]:/.test(x)).map((x) => x.slice(3).split(":"));
+  const label = (c, k) => {
+    const L = typeof SOLDIER_ITEMS !== "undefined" && SOLDIER_ITEMS[c] && SOLDIER_ITEMS[c][k];
+    return L ? L[0] : k;
+  };
+  function pubInv() {
+    const so = S();
+    if (!so || !so.UID) return;
+    so.pub("inv/" + so.UID, { it: itemsOf(W()), n: myName(), ts: Date.now() }, true);
+  }
+  boot((so) => {
+    pubInv();
+    setInterval(pubInv, 12e4);
+    so.sub("trade/" + so.UID, (t, d) => {
+      if (!d || !d.id || Date.now() - d.ts > 864e5) return;
+      const seen = LS2.get("sp_trd", []);
+      if (seen.includes(d.id)) return;
+      LS2.set("sp_trd", seen.concat(d.id).slice(-50));
+      incoming(d);
+    });
+    so.sub("tradeok/" + so.UID, (t, d) => {
+      if (!d || !d.id) return;
+      const pend = LS2.get("sp_trdp", {});
+      const p = pend[d.id];
+      if (!p) return;
+      delete pend[d.id];
+      LS2.set("sp_trdp", pend);
+      if (!d.ok) {
+        toast("🔁 " + (d.n || "De ander") + " wilde niet ruilen");
+        return;
+      }
+      const w = W();
+      if (p.give) drop(w, p.give);
+      if (p.coins > 0) w.coins = Math.max(0, w.coins - p.coins);
+      if (p.want) add(w, p.want);
+      if (d.coins > 0) w.coins += d.coins;
+      try {
+        so.save();
+        so.refreshHub();
+      } catch (e) {
+      }
+      pubInv();
+      toast("🔁 Ruil gelukt met " + (d.n || "?") + "!");
+    });
+  });
+  function drop(w, [c, k]) {
+    const i = w.own.indexOf("a3:" + c + ":" + k);
+    if (i >= 0) w.own.splice(i, 1);
+    const f = { h: "h3", b: "b3", s: "s3", p: "p3" }[c];
+    if (w.look && w.look[f] === k) w.look[f] = "";
+  }
+  function add(w, [c, k]) {
+    if (!w.own.includes("a3:" + c + ":" + k)) w.own.push("a3:" + c + ":" + k);
+  }
+  function incoming(d) {
+    const o = mk("div", "sheet hubs");
+    o.innerHTML = '<div class="shp" role="dialog"><button class="pclose">✕</button><div class="ab" style="text-align:center"><div style="font-size:54px">🔁</div><h3></h3><p class="w1"></p><p class="w2"></p><div class="h2btns" style="display:flex;gap:8px;justify-content:center"></div></div></div>';
+    document.body.append(o);
+    o.querySelector("h3").textContent = d.fromN + " wil ruilen!";
+    o.querySelector(".w1").textContent = "Jij krijgt: " + [d.give ? label(...d.give) : null, d.coins > 0 ? "🪙 " + d.coins : null].filter(Boolean).join(" + ");
+    o.querySelector(".w2").textContent = "Jij geeft: " + [d.want ? label(...d.want) : null, d.wantCoins > 0 ? "🪙 " + d.wantCoins : null].filter(Boolean).join(" + ") || "niets";
+    const bx = o.querySelector(".h2btns");
+    const yes = mk("button", "btn", "✅ Ruilen"), no = mk("button", "btn sec", "❌ Nee");
+    bx.append(yes, no);
+    const so = S(), w = W();
+    const reply = (ok) => {
+      so.pub("tradeok/" + d.from, { id: d.id, ok: ok ? 1 : 0, n: myName(), coins: ok ? d.wantCoins || 0 : 0, ts: Date.now() }, true);
+      o.remove();
+    };
+    no.onclick = () => reply(false);
+    o.querySelector(".pclose").onclick = () => reply(false);
+    yes.onclick = () => {
+      if (d.want && !w.own.includes("a3:" + d.want[0] + ":" + d.want[1])) {
+        toast("Je hebt dat item niet meer");
+        reply(false);
+        return;
+      }
+      if ((d.wantCoins || 0) > (w.coins || 0)) {
+        toast("Niet genoeg munten");
+        reply(false);
+        return;
+      }
+      if (d.want) drop(w, d.want);
+      w.coins -= d.wantCoins || 0;
+      if (d.give) add(w, d.give);
+      w.coins += d.coins || 0;
+      try {
+        so.save();
+        so.refreshHub();
+      } catch (e) {
+      }
+      pubInv();
+      toast("🔁 Geruild! Bekijk het in de avatar-winkel");
+      reply(true);
+    };
+  }
+  function tradeUI(uid, box) {
+    const so = S();
+    if (!so || uid === so.UID) return;
+    const sec2 = mk("div");
+    sec2.append(mk("div", "hsec", "🔁 Ruilen"));
+    box.append(sec2);
+    const st = mk("p", "hnote", "Items van de ander laden…");
+    sec2.append(st);
+    so.sub("inv/" + uid, (t, d) => {
+      st.remove();
+      sec2.querySelectorAll(".trf").forEach((x) => x.remove());
+      const f = mk("div", "trf");
+      const mine = itemsOf(W()), theirs = d && d.it || [];
+      const s1 = mk("select", "h2sel");
+      s1.append(new Option("— niets —", ""));
+      mine.forEach(([c, k]) => s1.append(new Option("Ik geef: " + label(c, k), c + "|" + k)));
+      const c1 = mk("input", "adm-in");
+      c1.type = "number";
+      c1.min = 0;
+      c1.placeholder = "+ munten die ik geef";
+      const s2 = mk("select", "h2sel");
+      s2.append(new Option("— niets —", ""));
+      theirs.forEach(([c, k]) => s2.append(new Option("Ik wil: " + label(c, k), c + "|" + k)));
+      const c2 = mk("input", "adm-in");
+      c2.type = "number";
+      c2.min = 0;
+      c2.placeholder = "+ munten die ik wil";
+      [c1, c2].forEach((x) => x.addEventListener("keydown", (e) => e.stopPropagation()));
+      const go = mk("button", "btn", "🔁 Stuur ruilvoorstel");
+      go.onclick = () => {
+        const give = s1.value ? s1.value.split("|") : null, want = s2.value ? s2.value.split("|") : null, coins = Math.max(0, +c1.value || 0), wantCoins = Math.max(0, +c2.value || 0);
+        if (!give && !want && !coins && !wantCoins) {
+          toast("Kies iets om te ruilen");
+          return;
+        }
+        if (coins > ((W() || {}).coins || 0)) {
+          toast("Je hebt niet zoveel munten");
+          return;
+        }
+        const id = so.UID + "-" + Date.now();
+        const pend = LS2.get("sp_trdp", {});
+        pend[id] = { give, want, coins };
+        LS2.set("sp_trdp", pend);
+        so.pub("trade/" + uid, { id, from: so.UID, fromN: myName(), give, want, coins, wantCoins, ts: Date.now() }, true);
+        toast("🔁 Voorstel verstuurd!");
+        go.disabled = true;
+      };
+      [s1, c1, s2, c2, go].forEach((x) => {
+        x.style.display = "block";
+        x.style.width = "100%";
+        x.style.margin = "5px 0";
+      });
+      f.append(s1, c1, s2, c2, go);
+      if (!theirs.length) f.prepend(mk("p", "hnote", "De ander heeft nog geen items, je kan wel munten of jouw items aanbieden."));
+      sec2.append(f);
+    });
+  }
+  const REASONS = ["Scheldwoorden", "Valsspelen", "Pesten", "Ongepaste naam", "Iets anders"];
+  function reportUI(uid, box) {
+    const so = S();
+    if (!so || uid === so.UID) return;
+    const b = mk("button", "btn sec", "🚩 Melden");
+    b.style.margin = "8px 0";
+    box.append(b);
+    b.onclick = () => {
+      b.remove();
+      const f = mk("div");
+      const r = mk("select", "h2sel");
+      REASONS.forEach((x) => r.append(new Option(x, x)));
+      const t = mk("input", "adm-in");
+      t.placeholder = "Wat gebeurde er? (optioneel)";
+      t.maxLength = 200;
+      t.addEventListener("keydown", (e) => e.stopPropagation());
+      const s = mk("button", "btn", "🚩 Verstuur melding");
+      s.onclick = () => {
+        const id = Date.now() + "-" + so.UID;
+        so.pub("rep/" + id, { by: so.UID, byN: myName(), u: uid, reason: r.value, text: t.value.trim().slice(0, 200), ts: Date.now() }, true);
+        toast("🚩 Bedankt, een admin bekijkt het");
+        f.remove();
+      };
+      [r, t, s].forEach((x) => {
+        x.style.display = "block";
+        x.style.width = "100%";
+        x.style.margin = "5px 0";
+      });
+      f.append(r, t, s);
+      box.append(f);
+    };
+  }
+  const REP = {};
+  boot((so) => {
+    so.sub("rep/+", (t, d) => {
+      const id = t.split("/").pop();
+      if (d && d.u) REP[id] = d;
+      else delete REP[id];
+      drawRep();
+    });
+  });
+  let repHost = null;
+  function drawRep() {
+    if (!repHost || !repHost.isConnected) return;
+    repHost.innerHTML = "";
+    const L = Object.entries(REP).sort((a, b) => b[1].ts - a[1].ts);
+    if (!L.length) {
+      repHost.append(mk("p", "hnote", "Geen open meldingen 🎉"));
+      return;
+    }
+    L.forEach(([id, d]) => {
+      const r = mk("div");
+      r.style.cssText = "background:var(--bg);border-radius:12px;padding:8px;margin:5px 0";
+      const nm = window.SPZ_RANKS && SPZ_RANKS.SEEN[d.u] && SPZ_RANKS.SEEN[d.u].n || ST[d.u] && ST[d.u].n || d.u;
+      r.append(mk("b", null, "🚩 " + nm + " — " + d.reason), mk("div", "hnote", (d.text ? '"' + d.text + '" · ' : "") + "door " + d.byN + " · " + new Date(d.ts).toLocaleString().slice(0, -3)));
+      const bt = mk("div");
+      bt.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-top:4px";
+      const pf = mk("button", "btn sec", "👤 Profiel");
+      pf.onclick = () => {
+        try {
+          S().openProfile(d.u);
+        } catch (e) {
+        }
+      };
+      const ok = mk("button", "btn", "✅ Afgehandeld");
+      ok.onclick = () => {
+        S().pub("rep/" + id, "", true);
+        delete REP[id];
+        drawRep();
+      };
+      bt.append(pf, ok);
+      r.append(bt);
+      repHost.append(r);
+    });
+  }
+  function reportsAdmin(b) {
+    if (!isAdm()) return;
+    b.append(mk("div", "hsec", "🚩 Meldingen"));
+    repHost = mk("div");
+    b.append(repHost);
+    drawRep();
+    b.append(mk("p", "hnote", "Gebruik bij een melding 👑 waarschuwen / chatverbod in het spelerspaneel. Meldingen zijn gebaseerd op vertrouwen."));
+  }
+  const ST = {};
+  boot((so) => {
+    so.sub("u/+/st", (t, d) => {
+      const u = t.split("/")[1];
+      if (d && d.t) ST[u] = d;
+      else delete ST[u];
+    });
+  });
+  function sample() {
+    const now = Date.now();
+    const on = Object.values(ST).filter((d) => d.on && now - (d.t || 0) < 9e5);
+    const h = LS2.get("sp_dash", []);
+    h.push([now, on.length]);
+    while (h.length && now - h[0][0] > 48 * 36e5) h.shift();
+    LS2.set("sp_dash", h.slice(-600));
+  }
+  setInterval(() => {
+    if (isAdm()) sample();
+  }, 5 * 6e4);
+  function dashUI(b) {
+    if (!isAdm()) return;
+    b.append(mk("div", "hsec", "📊 Live dashboard"));
+    const box = mk("div");
+    b.append(box);
+    const draw2 = () => {
+      if (!box.isConnected) {
+        clearInterval(iv);
+        return;
+      }
+      box.innerHTML = "";
+      const now = Date.now();
+      const onl = A() && A().ONL || {};
+      const on = Object.entries(ST).filter(([u, d]) => d.on && now - (d.t || 0) < 9e5);
+      Object.keys(onl).forEach((u) => {
+        if (!on.some((x) => x[0] === u)) on.push([u, { n: onl[u] && onl[u].n || window.SPZ_RANKS && SPZ_RANKS.SEEN[u] && SPZ_RANKS.SEEN[u].n || u }]);
+      });
+      const games = {}, rooms = /* @__PURE__ */ new Set();
+      on.forEach(([u, d]) => {
+        if (d.g) games[d.g] = (games[d.g] || 0) + 1;
+        if (d.room) rooms.add(d.room);
+      });
+      const tiles = mk("div", "h2tiles");
+      [["🟢", on.length, "nu online"], ["🎮", on.filter((x) => x[1].g).length, "in een spel"], ["🚪", rooms.size, "open kamers"], ["🚩", Object.keys(REP).length, "meldingen"]].forEach(([e, n, l]) => {
+        const t = mk("div", "h2tile");
+        t.style.cssText = "background:linear-gradient(135deg,#5b4cf5,#1e1b3a);cursor:default";
+        t.innerHTML = '<span class="e"></span><b></b><small></small>';
+        t.querySelector(".e").textContent = e;
+        t.querySelector("b").textContent = n;
+        t.querySelector("small").textContent = l;
+        tiles.append(t);
+      });
+      box.append(tiles);
+      const gl = Object.entries(games).sort((a, c) => c[1] - a[1]);
+      if (gl.length) {
+        box.append(mk("div", "hnote", "Populairste spellen nu:"));
+        gl.slice(0, 8).forEach(([g, n]) => {
+          const gg = (typeof G !== "undefined" ? G : []).concat(typeof MP !== "undefined" ? MP : []).find((x) => x.id === g);
+          const r = mk("div");
+          r.style.cssText = "display:flex;gap:8px;align-items:center;margin:2px 0";
+          const bar = mk("div");
+          bar.style.cssText = "height:12px;border-radius:6px;background:#5b4cf5;width:" + Math.max(8, n / Math.max(1, gl[0][1]) * 160) + "px";
+          r.append(mk("span", null, gg ? gg.e + " " + gg.n : g), bar, mk("b", null, String(n)));
+          box.append(r);
+        });
+      }
+      const h = LS2.get("sp_dash", []);
+      if (h.length > 2) {
+        const cv = document.createElement("canvas");
+        cv.width = 460;
+        cv.height = 110;
+        cv.style.cssText = "width:100%;max-width:460px;background:var(--bg);border-radius:12px;margin-top:8px";
+        const x = cv.getContext("2d");
+        const mx = Math.max(1, ...h.map((q) => q[1]));
+        x.strokeStyle = "#5b4cf5";
+        x.lineWidth = 2;
+        x.beginPath();
+        h.forEach((q, i) => {
+          const px = 10 + i / (h.length - 1) * 440, py = 100 - q[1] / mx * 85;
+          i ? x.lineTo(px, py) : x.moveTo(px, py);
+        });
+        x.stroke();
+        x.fillStyle = "#888";
+        x.font = "11px system-ui";
+        x.fillText("online (laatste 48 u, max " + mx + ")", 12, 14);
+        box.append(cv);
+      }
+      const list = mk("div", "hnote");
+      list.textContent = "Online: " + on.map(([u, d]) => (d.n || u) + (d.g ? " (" + d.g + ")" : "")).join(", ");
+      box.append(list);
+    };
+    const iv = setInterval(draw2, 4e3);
+    draw2();
+    sample();
+  }
+  const LOG = {};
+  boot((so) => {
+    so.sub("mlog/+", (t, d) => {
+      const id = t.split("/").pop();
+      if (d && d.g) LOG[id] = d;
+      else delete LOG[id];
+    });
+  });
+  if (typeof podium === "function") {
+    const op = podium;
+    podium = function(st, r) {
+      try {
+        if (typeof NET !== "undefined" && NET.isHost && NET.players && NET.players.length > 1 && r) {
+          const so = S();
+          const g = NET.game && NET.game.id || r && r.game || "?";
+          const pl = NET.players.map((p) => ({ id: p.id, n: p.name, bot: !!p.bot, uid: p.uid || "", sc: r.scores ? r.scores[p.id] : null }));
+          const id = Date.now() + "-" + (so && so.UID);
+          so && so.pub("mlog/" + id, { g, code: NET.code, pl, title: r.title || "", text: r.text || "", win: r.winner || null, dur: window.__spzRoomStart ? Math.round((Date.now() - __spzRoomStart) / 1e3) : null, ev: (window.__spzEv || []).slice(-40), ts: Date.now() }, true);
+        }
+      } catch (e) {
+      }
+      return op.apply(this, arguments);
+    };
+  }
+  window.__spzEv = [];
+  setInterval(() => {
+    try {
+      if (typeof NET === "undefined" || !NET.players) return;
+      const ids = NET.players.map((p) => p.name).join(",");
+      if (ids !== window.__spzLastIds) {
+        window.__spzEv.push([Date.now(), "👥 " + ids]);
+        window.__spzLastIds = ids;
+        if (window.__spzEv.length > 80) window.__spzEv.shift();
+        if (!window.__spzRoomStart) window.__spzRoomStart = Date.now();
+      }
+    } catch (e) {
+    }
+  }, 2e3);
+  function logUI(b) {
+    if (!isDev()) return;
+    b.append(mk("div", "hsec", "📼 Laatste online spellen"));
+    const box = mk("div");
+    b.append(box);
+    const L = Object.entries(LOG).sort((a, c) => c[1].ts - a[1].ts).slice(0, 30);
+    if (!L.length) {
+      box.append(mk("p", "hnote", "Nog geen online spellen gelogd."));
+      return;
+    }
+    L.forEach(([id, d]) => {
+      const r = mk("details");
+      r.style.cssText = "background:var(--bg);border-radius:12px;padding:8px;margin:5px 0";
+      const gg = (typeof MP !== "undefined" ? MP : []).find((x) => x.id === d.g);
+      const s = mk("summary", null, (gg ? gg.e + " " + gg.n : d.g) + " · " + new Date(d.ts).toLocaleString().slice(0, -3) + " · " + d.pl.length + " spelers");
+      r.append(s);
+      const tb = mk("div");
+      d.pl.slice().sort((a, c) => (c.sc || 0) - (a.sc || 0)).forEach((p) => {
+        const x = mk("div", null, (p.id === d.win ? "🏆 " : "") + (p.bot ? "🤖 " : "") + p.n + (p.sc != null ? " — " + p.sc : "") + (p.uid ? " · " + p.uid : ""));
+        x.setAttribute("data-noi18n", "");
+        tb.append(x);
+      });
+      r.append(tb);
+      if (d.title) r.append(mk("div", "hnote", d.title + (d.text ? " · " + d.text : "")));
+      if (d.dur) r.append(mk("div", "hnote", "Duur: " + Math.round(d.dur / 60) + " min · kamer " + d.code));
+      (d.ev || []).forEach(([t, e]) => r.append(mk("div", "hnote", new Date(t).toLocaleTimeString().slice(0, 5) + " " + e)));
+      if (isOwn()) {
+        const del = mk("button", "btn sec", "🗑️");
+        del.onclick = () => {
+          S().pub("mlog/" + id, "", true);
+          r.remove();
+        };
+        r.append(del);
+      }
+      box.append(r);
+    });
+  }
+  let AQ = [];
+  boot((so) => {
+    so.sub("ctl/quizq", (t, d) => {
+      AQ = valid(d) && Array.isArray(d.list) ? d.list.filter((q) => Array.isArray(q) && q.length === 3).slice(0, 300) : [];
+      window.SPZ_ADMINQ = AQ;
+    });
+  });
+  const parse = (txt) => txt.split("\n").map((l) => l.split("|").map((x) => x.trim())).filter((p) => p.length >= 3 && p[0] && p[1]).map((p) => ["E", p[0].slice(0, 160), p.slice(1, 5).map((x) => x.slice(0, 60)).join("|")]);
+  function quizAdmin(b) {
+    if (!isAdm()) return;
+    b.append(mk("div", "hsec", "❓ Eigen quizvragen"));
+    b.append(mk("p", "hnote", "Eén vraag per regel: vraag | juist antwoord | fout | fout | fout. Ze komen in de 📺 Feestquiz voor iedereen."));
+    const ta = mk("textarea", "adm-in");
+    ta.rows = 6;
+    ta.style.width = "100%";
+    ta.value = AQ.map((q) => q[1] + " | " + q[2].split("|").join(" | ")).join("\n");
+    ta.addEventListener("keydown", (e) => e.stopPropagation());
+    const sv = mk("button", "btn", "💾 Opslaan");
+    sv.onclick = () => {
+      const list = parse(ta.value);
+      S().pub("ctl/quizq", Object.assign({ list, ts: Date.now() }, sign()), true);
+      AQ = list;
+      window.SPZ_ADMINQ = list;
+      toast("❓ " + list.length + " vragen opgeslagen");
+    };
+    b.append(ta, sv);
+  }
+  window.SPZ_QPARSE = parse;
+  new MutationObserver((ms) => {
+    ms.forEach((m) => m.addedNodes.forEach((n) => {
+      if (n.nodeType === 1 && n.classList && n.classList.contains("hubs") && n.dataset.uid && !n._s2) {
+        n._s2 = 1;
+        setTimeout(() => {
+          const b = xbox(n);
+          try {
+            tradeUI(n.dataset.uid, b);
+          } catch (e) {
+          }
+          try {
+            reportUI(n.dataset.uid, b);
+          } catch (e) {
+          }
+        }, 400);
+      }
+    }));
+  }).observe(document.body, { childList: true });
+  if (window.SPZ_POWER) {
+    const f1 = SPZ_POWER.site;
+    if (typeof f1 === "function") SPZ_POWER.site = function(b) {
+      const r = f1.apply(this, arguments);
+      try {
+        dashUI(b);
+        reportsAdmin(b);
+        quizAdmin(b);
+        logUI(b);
+      } catch (e) {
+      }
+      return r;
+    };
+    const fd = SPZ_POWER.dev;
+    if (typeof fd === "function") SPZ_POWER.dev = function(b) {
+      const r = fd.apply(this, arguments);
+      try {
+        logUI(b);
+      } catch (e) {
+      }
+      return r;
+    };
+  }
+  window.SPZ_S2 = { dashUI, reportsAdmin, logUI, quizAdmin, pubInv };
 })();
 ;
 (function() {
