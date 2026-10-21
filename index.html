@@ -74160,7 +74160,7 @@ html[data-spt="rustig"] .chips button,html[data-spt="rustig"] .mpbn,html[data-sp
     if (!isOwn() && sh) close();
   }, 1500);
   let sh = null, tab = "ranks";
-  const TABS = [["ranks", "👥 Ranks & spelers"], ["site", "🛠️ Site"], ["mall", "🛍️ Winkelcentrum"], ["eco", "🎁 Economie"], ["items", "👕 Items"], ["dash", "📊 Dashboard"], ["log", "📜 Logboek"]];
+  const TABS = [["ranks", "👥 Ranks & spelers"], ["site", "🛠️ Site"], ["mall", "🛍️ Winkelcentrum"], ["eco", "🎁 Economie"], ["items", "👕 Items"], ["dash", "📊 Dashboard"], ["ev", "📅 Events"], ["log", "📜 Logboek"]];
   function close() {
     if (sh) {
       sh.remove();
@@ -74211,6 +74211,8 @@ html[data-spt="rustig"] .chips button,html[data-spt="rustig"] .mpbn,html[data-sp
         window.SPZ_ABUSE && SPZ_ABUSE.ownerUI(body);
         const p = mk("p", "hnote", "💡 Munten afpakken: 👑 Admin → 🎁 Geven met een negatief bedrag (alleen jij als owner kan dat).");
         body.append(p);
+      } else if (tab === "ev") {
+        window.SPZ_EVPLAN && SPZ_EVPLAN.ui(body);
       } else if (tab === "dash") {
         if (window.SPZ_S2) {
           SPZ_S2.dashUI(body);
@@ -76994,10 +76996,14 @@ window.SPZ_PARTYQ = [
     custom = d && d.items || { h: {}, b: {} };
   }
   let EV = null;
+  let PLN = null;
   const eventPrice = (c, k) => {
-    if (!EV || Date.now() > EV.until) return null;
-    const x = (EV.list || []).find((q) => q[0] === c && q[1] === k);
-    return x ? Math.max(0, +x[2] || 0) : null;
+    for (const E2 of [EV, PLN]) {
+      if (!E2 || Date.now() > E2.until) continue;
+      const x = (E2.list || []).find((q) => q[0] === c && q[1] === k);
+      if (x) return Math.max(0, +x[2] || 0);
+    }
+    return null;
   };
   const got = new Set(LS2.get("sp_gift3", []));
   function receive(d, from) {
@@ -77413,7 +77419,9 @@ window.SPZ_PARTYQ = [
       }
     }));
   };
-  window.SPZ_ITEMS = { eventPrice, receive, applyCustom, ownerUI(b) {
+  window.SPZ_ITEMS = { setPlanned: (x) => {
+    PLN = x;
+  }, eventPrice, receive, applyCustom, ownerUI(b) {
     giveUI(b);
     eventUI(b);
     makerUI(b);
@@ -78144,6 +78152,252 @@ window.SPZ_PARTYQ = [
     };
   }
   window.SPZ_S2 = { dashUI, reportsAdmin, logUI, quizAdmin, pubInv };
+})();
+;
+(function() {
+  const mk = (t, c, x) => {
+    const e = document.createElement(t);
+    if (c) e.className = c;
+    if (x != null) e.textContent = x;
+    return e;
+  };
+  const S = () => window.SPZ_SOC, A = () => window.SPZ_ADM, toast = (t, b) => {
+    try {
+      xpToast(t, b !== false);
+    } catch (e) {
+    }
+  };
+  const isOwn = () => {
+    try {
+      return !!A().isOwn();
+    } catch (e) {
+      return false;
+    }
+  };
+  const LS2 = { get(k, d) {
+    try {
+      const v = localStorage.getItem(k);
+      return v == null ? d : JSON.parse(v);
+    } catch (e) {
+      return d;
+    }
+  }, set(k, v) {
+    try {
+      localStorage.setItem(k, JSON.stringify(v));
+    } catch (e) {
+    }
+  } };
+  const css = mk("style");
+  css.textContent = `#evbar{position:sticky;top:0;z-index:50;display:none;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;padding:8px 14px;font-weight:900;color:#fff;background:linear-gradient(90deg,#f43f5e,#a855f7,#0ea5e9);background-size:200% 100%;animation:evb 6s linear infinite;text-align:center;font-size:14px}
+@keyframes evb{to{background-position:200% 0}}#evbar button{border:0;border-radius:99px;padding:4px 12px;font:inherit;font-size:13px;font-weight:900;cursor:pointer;background:#fff;color:#7c3aed}#evbar .x{background:#fff3;color:#fff;padding:2px 8px}
+.evrow{background:var(--bg);border-radius:12px;padding:8px;margin:6px 0}.evrow b{display:block}.evgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}.evgrid label{display:flex;gap:6px;align-items:center;font-size:13px}`;
+  document.head.append(css);
+  const bar = mk("div");
+  bar.id = "evbar";
+  document.body.prepend(bar);
+  let PLAN = [];
+  let shownId = null;
+  const active = () => {
+    const n = Date.now();
+    return PLAN.filter((e) => e.start <= n && n < e.end);
+  };
+  const fmtLeft = (ms) => {
+    const s = Math.max(0, Math.floor(ms / 1e3)), d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+    return d ? d + "d " + h + "u" : h ? h + "u " + m + "m" : m + "m " + s % 60 + "s";
+  };
+  const gOf = (id) => (typeof G !== "undefined" ? G : []).concat(typeof MP !== "undefined" ? MP : []).find((g) => g.id === id);
+  function apply() {
+    const act = active();
+    const n = Date.now();
+    const x2 = act.filter((e) => e.x2).reduce((m, e) => Math.max(m, e.end), 0);
+    if (x2 && (window.SPZ_X2 || 0) < x2) window.SPZ_X2 = x2;
+    const items = [];
+    act.forEach((e) => (e.items || []).forEach((x3) => items.push(x3)));
+    if (window.SPZ_ITEMS && SPZ_ITEMS.setPlanned) SPZ_ITEMS.setPlanned(items.length ? { list: items, until: Math.max(...act.map((e) => e.end)) } : null);
+    const got = LS2.get("sp_evgot", []);
+    act.forEach((e) => {
+      if (!e.gift || got.includes(e.id)) return;
+      got.push(e.id);
+      LS2.set("sp_evgot", got.slice(-60));
+      const g2 = e.gift;
+      if (g2.coins > 0) {
+        try {
+          S().addCoins(Math.min(2e3, g2.coins), "🎁 event");
+        } catch (x3) {
+        }
+      }
+      if (g2.item && window.SPZ_AVATAR) {
+        const [c, k] = g2.item;
+        SPZ_AVATAR.grant(c, k);
+      }
+      toast("🎁 Event-cadeau: " + [g2.coins > 0 ? "🪙 " + g2.coins : null, g2.item && typeof SOLDIER_ITEMS !== "undefined" && SOLDIER_ITEMS[g2.item[0]] && SOLDIER_ITEMS[g2.item[0]][g2.item[1]] ? SOLDIER_ITEMS[g2.item[0]][g2.item[1]][0] : null].filter(Boolean).join(" + "));
+    });
+    const cur2 = act.sort((a, b) => b.start - a.start)[0];
+    const soon = PLAN.filter((e) => e.start > n && e.start - n < 864e5).sort((a, b) => a.start - b.start)[0];
+    const show = cur2 || soon;
+    const closed = LS2.get("sp_evclose", "");
+    if (!show || closed === show.id + (cur2 ? "a" : "s")) {
+      bar.style.display = "none";
+      return;
+    }
+    bar.style.display = "flex";
+    bar.innerHTML = "";
+    const g = show.game && gOf(show.game);
+    bar.append(mk("span", null, (cur2 ? "🎉 " + show.title + " · nog " + fmtLeft(show.end - n) : "⏳ Binnenkort: " + show.title + " · start over " + fmtLeft(show.start - n)) + (cur2 && show.x2 ? " · ⚡ 2x munten" : "") + (cur2 && (show.items || []).length ? " · 👕 items te koop" : "")));
+    if (cur2 && g) {
+      const b = mk("button", null, "▶ " + g.e + " " + g.n);
+      b.onclick = () => {
+        try {
+          g.mp ? mpOpen() : launch(g);
+        } catch (e) {
+        }
+      };
+      bar.append(b);
+    }
+    if (cur2 && (show.items || []).length) {
+      const b = mk("button", null, "👕 Bekijk");
+      b.onclick = () => {
+        try {
+          SPZ_AVATAR.open();
+        } catch (e) {
+        }
+      };
+      bar.append(b);
+    }
+    const x = mk("button", "x", "✕");
+    x.onclick = () => {
+      LS2.set("sp_evclose", show.id + (cur2 ? "a" : "s"));
+      bar.style.display = "none";
+    };
+    bar.append(x);
+    if (cur2 && shownId !== cur2.id) {
+      shownId = cur2.id;
+      if (cur2.msg) toast("🎉 " + cur2.title + ": " + cur2.msg);
+    }
+  }
+  setInterval(apply, 1e3);
+  setTimeout(function boot() {
+    const so = S();
+    if (!so || !so.sub) {
+      setTimeout(boot, 1500);
+      return;
+    }
+    try {
+      so.socStart();
+    } catch (e) {
+    }
+    so.sub("ctl/evplan", (t, d) => {
+      const a = A();
+      PLAN = d && a && d.otk === a.OWNTOK && Array.isArray(d.list) ? d.list.filter((e) => e && e.id && e.end > Date.now() - 864e5).slice(0, 40) : [];
+      apply();
+    });
+  }, 2e3);
+  function ui(b) {
+    if (!isOwn()) return;
+    b.append(mk("div", "hsec", "📅 Event-planner"));
+    b.append(mk("p", "hnote", "Plan events vooraf. Ze starten en stoppen vanzelf voor iedereen, ook als jij offline bent."));
+    const list = mk("div");
+    b.append(list);
+    const draw2 = () => {
+      list.innerHTML = "";
+      const n = Date.now();
+      if (!PLAN.length) list.append(mk("p", "hnote", "Nog geen events gepland."));
+      PLAN.slice().sort((a, c) => a.start - c.start).forEach((e) => {
+        const r = mk("div", "evrow");
+        const st = e.start <= n && n < e.end ? "🟢 bezig" : e.start > n ? "⏳ gepland" : "✔️ voorbij";
+        r.append(mk("b", null, st + " · " + e.title));
+        r.append(mk("div", "hnote", new Date(e.start).toLocaleString().slice(0, -3) + " → " + new Date(e.end).toLocaleString().slice(0, -3) + " · " + [e.x2 ? "⚡ 2x munten" : null, (e.items || []).length ? "👕 " + e.items.length + " items" : null, e.gift ? "🎁 cadeau" : null, e.game ? "🎮 " + ((gOf(e.game) || {}).n || e.game) : null].filter(Boolean).join(" · ")));
+        const del = mk("button", "btn sec", "🗑️ Verwijderen");
+        del.onclick = () => {
+          save(PLAN.filter((x) => x.id !== e.id));
+        };
+        r.append(del);
+        list.append(r);
+      });
+    };
+    const save = (L) => {
+      PLAN = L;
+      S().pub("ctl/evplan", { otk: A().OWNTOK, list: L, ts: Date.now() }, true);
+      draw2();
+      apply();
+      toast("📅 Planning opgeslagen");
+    };
+    const f = mk("div", "evrow");
+    f.append(mk("b", null, "➕ Nieuw event"));
+    const inp = (ph, type, v) => {
+      const i = mk("input", "adm-in");
+      i.placeholder = ph;
+      if (type) i.type = type;
+      if (v != null) i.value = v;
+      i.addEventListener("keydown", (e) => e.stopPropagation());
+      i.style.cssText = "width:100%;margin:3px 0";
+      return i;
+    };
+    const tt = inp("Naam (bv. 🎃 Halloween-weekend)");
+    const ms = inp("Bericht (optioneel)");
+    const pad = (d) => String(d).padStart(2, "0");
+    const loc = (d) => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+    const now = /* @__PURE__ */ new Date();
+    const s0 = inp("", "datetime-local", loc(new Date(now.getTime() + 36e5)));
+    const e0 = inp("", "datetime-local", loc(new Date(now.getTime() + 36e5 * 25)));
+    const g = mk("div", "evgrid");
+    const mkc = (l) => {
+      const L = mk("label");
+      const c = mk("input");
+      c.type = "checkbox";
+      L.append(c, document.createTextNode(l));
+      g.append(L);
+      return c;
+    };
+    const cx2 = mkc("⚡ 2x munten");
+    const cgift = mkc("🎁 cadeau bij inloggen");
+    const gc = inp("Cadeau: munten", "number", 50);
+    const gi = mk("select", "adm-in");
+    gi.append(new Option("Cadeau: geen item", ""));
+    if (typeof SOLDIER_ITEMS !== "undefined") ["h", "b", "s", "p"].forEach((c) => Object.entries(SOLDIER_ITEMS[c] || {}).forEach(([k, v]) => gi.append(new Option("Cadeau: " + v[0], c + "|" + k))));
+    const gm = mk("select", "adm-in");
+    gm.append(new Option("Uitgelicht spel: geen", ""));
+    (typeof G !== "undefined" ? G : []).forEach((x) => gm.append(new Option(x.e + " " + x.n, x.id)));
+    const ib = mk("details");
+    ib.append(mk("summary", null, "👕 Items te koop tijdens het event"));
+    const chk = [];
+    if (typeof SOLDIER_ITEMS !== "undefined") ["h", "b", "s", "p"].forEach((c) => Object.entries(SOLDIER_ITEMS[c] || {}).forEach(([k, v]) => {
+      if (!v.ex) return;
+      const L = mk("label");
+      L.style.cssText = "display:flex;gap:6px;align-items:center";
+      const i = mk("input");
+      i.type = "checkbox";
+      const p = mk("input");
+      p.type = "number";
+      p.value = 150;
+      p.style.width = "70px";
+      p.addEventListener("keydown", (e) => e.stopPropagation());
+      L.append(i, mk("span", null, v[0]), p);
+      chk.push([i, p, c, k]);
+      ib.append(L);
+    }));
+    [gi, gm].forEach((x) => x.style.cssText = "width:100%;margin:3px 0");
+    const go = mk("button", "btn", "📅 Inplannen");
+    go.onclick = () => {
+      const st = new Date(s0.value).getTime(), en = new Date(e0.value).getTime();
+      if (!tt.value.trim()) {
+        toast("Geef het event een naam");
+        return;
+      }
+      if (!(en > st)) {
+        toast("Het einde moet na de start liggen");
+        return;
+      }
+      const ev = { id: "e" + Date.now().toString(36), title: tt.value.trim().slice(0, 40), msg: ms.value.trim().slice(0, 100), start: st, end: en, x2: cx2.checked ? 1 : 0, game: gm.value || null, items: chk.filter((x) => x[0].checked).map((x) => [x[2], x[3], +x[1].value || 0]), gift: cgift.checked ? { coins: Math.max(0, +gc.value || 0), item: gi.value ? gi.value.split("|") : null } : null };
+      save(PLAN.concat(ev));
+      tt.value = "";
+      ms.value = "";
+    };
+    f.append(tt, ms, mk("small", null, "Start"), s0, mk("small", null, "Einde"), e0, g, gc, gi, gm, ib, go);
+    b.append(f);
+    draw2();
+  }
+  window.SPZ_EVPLAN = { ui, active };
 })();
 ;
 (function() {
