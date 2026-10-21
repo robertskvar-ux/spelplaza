@@ -58977,4 +58977,203 @@ html[data-spt="rustig"] .chips button,html[data-spt="rustig"] .mpbn,html[data-sp
   boot();
   window.SPZ_H2 = { openLB, openClan, enhance };
 })();
+;
+(function() {
+  if (typeof three !== "function" || typeof THREE === "undefined") return;
+  const V = THREE;
+  const KEY = "spz_q3d";
+  const get = () => {
+    try {
+      return localStorage.getItem(KEY) || "auto";
+    } catch (e) {
+      return "auto";
+    }
+  };
+  const phone = () => matchMedia("(pointer:coarse)").matches && Math.min(screen.width, screen.height) < 820;
+  let autoLvl = phone() ? "mid" : "high";
+  const lvl = () => {
+    const s = get();
+    return s === "auto" ? autoLvl : s;
+  };
+  const orig = three;
+  three = function(st, w, h, opt) {
+    opt = opt || {};
+    const T = orig(st, w, h, opt);
+    if (opt.noq) return T;
+    const L = lvl();
+    const r = T.r;
+    try {
+      r.setPixelRatio(Math.min(devicePixelRatio || 1, L === "high" ? 2 : L === "mid" ? 1.5 : 1));
+      r.setSize(w, h, false);
+      T.c.style.width = w + "px";
+      T.c.style.height = "auto";
+      r.toneMapping = V.ACESFilmicToneMapping;
+      r.toneMappingExposure = 1.12;
+      if (L !== "low") {
+        r.shadowMap.enabled = true;
+        r.shadowMap.type = V.PCFSoftShadowMap;
+      }
+    } catch (e) {
+    }
+    const sc = T.s, cam = T.cam;
+    let sun = null, sunDir = null, frame = 0, scanAt = 0, ms = 0, slow = 0;
+    const tmp = new V.Vector3(), fw = new V.Vector3();
+    const SZ = L === "high" ? 2048 : 1024, RAD = L === "high" ? 34 : 24;
+    let envDone = 0;
+    function env() {
+      envDone = 1;
+      if (sc.environment || L === "low") return;
+      let std = 0;
+      sc.traverse((o) => {
+        if (o.isMesh) {
+          const m = [].concat(o.material)[0];
+          if (m && m.isMeshStandardMaterial) std++;
+        }
+      });
+      if (!std) return;
+      const es = new V.Scene();
+      const g = new V.SphereGeometry(10, 24, 12);
+      const col = [];
+      const pos = g.attributes.position;
+      const top = new V.Color(12575743), bot = new V.Color(7035464), hz = new V.Color(16777215);
+      for (let i = 0; i < pos.count; i++) {
+        const y = pos.getY(i) / 10;
+        const c = y > 0 ? hz.clone().lerp(top, Math.min(1, y * 1.6)) : hz.clone().lerp(bot, Math.min(1, -y * 3));
+        col.push(c.r, c.g, c.b);
+      }
+      g.setAttribute("color", new V.Float32BufferAttribute(col, 3));
+      es.add(new V.Mesh(g, new V.MeshBasicMaterial({ vertexColors: true, side: V.BackSide })));
+      [[0, 8, 0, 6], [7, 3, 4, 3], [-6, 4, -5, 3]].forEach(([x, y, z, w2]) => {
+        const pl = new V.Mesh(new V.PlaneGeometry(w2, w2), new V.MeshBasicMaterial({ color: 16777215, side: V.DoubleSide }));
+        pl.position.set(x, y, z);
+        pl.lookAt(0, 0, 0);
+        es.add(pl);
+      });
+      const pm = new V.PMREMGenerator(r);
+      sc.environment = pm.fromScene(es, 0.04).texture;
+      pm.dispose();
+      sc.traverse((o) => {
+        if (o.isMesh) [].concat(o.material).forEach((m) => {
+          if (m && m.isMeshStandardMaterial && m.envMapIntensity === 1) m.envMapIntensity = 0.55;
+        });
+      });
+    }
+    function scan() {
+      let best2 = null;
+      sc.traverse((o) => {
+        if (o.isDirectionalLight && (!best2 || o.intensity > best2.intensity)) best2 = o;
+      });
+      if (best2 && best2 !== sun && L !== "low") {
+        sun = best2;
+        if (!sun.castShadow) {
+          sun.castShadow = true;
+          sun.shadow.mapSize.set(SZ, SZ);
+          const c = sun.shadow.camera;
+          c.left = c.bottom = -RAD;
+          c.right = c.top = RAD;
+          c.near = 0.5;
+          c.far = 260;
+          c.updateProjectionMatrix();
+          sun.shadow.bias = -6e-4;
+          sun.shadow.normalBias = 0.03;
+          sun.shadow.radius = 3;
+        }
+        if (!sun.target.parent) sc.add(sun.target);
+        sunDir = sun.position.clone().sub(sun.target.position).normalize();
+        if (sunDir.y < 0.25) {
+          sunDir.y = 0.6;
+          sunDir.normalize();
+        }
+        sun.userData.q3d = 1;
+      }
+      if (!sun) return;
+      let n = 0;
+      sc.traverse((o) => {
+        if (!o.isMesh || o.userData.q3s) return;
+        o.userData.q3s = 1;
+        n++;
+        const m = [].concat(o.material)[0];
+        if (!m || m.transparent && m.opacity < 0.9 || m.isMeshBasicMaterial && !m.map && o.geometry && o.geometry.type === "SphereGeometry") return;
+        if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+        const rad = (o.geometry.boundingSphere ? o.geometry.boundingSphere.radius : 1) * Math.max(o.scale.x, o.scale.y, o.scale.z);
+        o.receiveShadow = true;
+        if (rad < 25 && !m.isMeshBasicMaterial) o.castShadow = true;
+      });
+    }
+    const rr = r.render.bind(r);
+    r.render = function(s, c) {
+      const t0 = performance.now();
+      if (frame++ === 2 || frame - scanAt > 90) {
+        scanAt = frame;
+        try {
+          scan();
+        } catch (e) {
+        }
+        if (!envDone) try {
+          env();
+        } catch (e) {
+        }
+      }
+      if (sun && sunDir && c === cam) {
+        cam.getWorldDirection(fw);
+        fw.y = 0;
+        if (fw.lengthSq() < 1e-4) fw.set(0, 0, -1);
+        fw.normalize();
+        tmp.copy(cam.position).addScaledVector(fw, RAD * 0.55);
+        tmp.y = 0;
+        sun.target.position.copy(tmp);
+        sun.position.copy(tmp).addScaledVector(sunDir, 120);
+        sun.target.updateMatrixWorld();
+      }
+      rr(s, c);
+      const dt = performance.now() - t0;
+      ms = ms * 0.95 + dt * 0.05;
+      if (get() === "auto" && frame > 120 && ms > 22) {
+        if (++slow > 90) {
+          slow = 0;
+          if (autoLvl === "high") autoLvl = "mid";
+          else if (autoLvl === "mid") autoLvl = "low";
+          if (autoLvl === "low" && sun) {
+            sun.castShadow = false;
+            r.shadowMap.enabled = false;
+          }
+        }
+      }
+    };
+    return T;
+  };
+  const setBtn = document.getElementById("set");
+  if (setBtn) {
+    const prev = setBtn.onclick;
+    setBtn.onclick = (e) => {
+      prev && prev(e);
+      const sh = document.querySelector(".sheet.sets .shp");
+      if (!sh || sh.querySelector(".q3row")) return;
+      const row = document.createElement("div");
+      row.className = "srow2 q3row";
+      row.innerHTML = '<span>🧊</span><div><b>3D-kwaliteit</b><small>Schaduwen en scherpte in de 3D-spellen. Lager = soepeler op een trage telefoon.</small></div><select aria-label="3D-kwaliteit" style="font:inherit;padding:6px 8px;border-radius:10px"><option value="auto">Automatisch</option><option value="high">Hoog</option><option value="mid">Normaal</option><option value="low">Laag</option></select>';
+      const ref = sh.querySelector(".musvol") || sh.querySelector("h3");
+      ref.after(row);
+      const s = row.querySelector("select");
+      s.value = get();
+      s.onchange = () => {
+        try {
+          localStorage.setItem(KEY, s.value);
+        } catch (x) {
+        }
+        autoLvl = phone() ? "mid" : "high";
+        try {
+          xpToast("🧊 Geldt vanaf het volgende 3D-spel");
+        } catch (x) {
+        }
+      };
+    };
+  }
+  window.SPZ_Q3D = { lvl, set: (v) => {
+    try {
+      localStorage.setItem(KEY, v);
+    } catch (e) {
+    }
+  } };
+})();
 </script></body></html>
