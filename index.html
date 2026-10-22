@@ -94663,8 +94663,8 @@ window.SPZ_PARTYQ = [
     }
     const o = document.createElement("div");
     o.className = "sheet hubs";
-    o.innerHTML = '<div class="shp" role="dialog"><button class="pclose">✕</button><div class="ab"><h3>✨ Nieuw op SpelPlaza</h3><div class="nw"></div><button class="btn" style="width:100%;margin-top:10px">🎮 Spelen!</button></div></div>';
-    const nw = o.querySelector(".nw");
+    o.innerHTML = '<div class="shp" role="dialog"><button class="pclose">✕</button><div class="ab"><h3>✨ Nieuw op SpelPlaza</h3><div class="spznews"></div><button class="btn" style="width:100%;margin-top:10px">🎮 Spelen!</button></div></div>';
+    const nw = o.querySelector(".spznews");
     NEWS.forEach(([e, t, d]) => {
       const r = document.createElement("div");
       r.style.cssText = "display:flex;gap:10px;align-items:center;padding:8px;border-radius:12px;background:var(--bg);margin:6px 0";
