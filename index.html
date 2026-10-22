@@ -102911,6 +102911,235 @@ body.pw2mirror{transform:scaleX(-1)}body.pw2tilt{transform:rotate(4deg);transiti
 })();
 ;
 (function() {
+  const S = () => window.SPZ_SOC, A = () => window.SPZ_ADM, toast = (t) => {
+    try {
+      xpToast(t);
+    } catch (e) {
+    }
+  };
+  const SEG = 15e3, KEEP = 5, FPS = 60, BPS = 38e4;
+  const MT = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm", "video/mp4"].find((m) => {
+    try {
+      return window.MediaRecorder && MediaRecorder.isTypeSupported(m);
+    } catch (e) {
+      return false;
+    }
+  });
+  let segs = [], rec = null, recCan = null, recStart = 0, recG = "", chunks = [], flushCb = null;
+  function bigCanvas() {
+    const st = document.getElementById("stage");
+    if (!st || !st.offsetParent) return null;
+    let best2 = null, ba = 0;
+    st.querySelectorAll("canvas").forEach((c) => {
+      const r = c.getBoundingClientRect(), a = r.width * r.height;
+      if (a > ba && r.width > 80 && c.width > 0) {
+        ba = a;
+        best2 = c;
+      }
+    });
+    return best2;
+  }
+  function gname() {
+    try {
+      return cur && cur.g ? cur.g.e + " " + cur.g.n : "?";
+    } catch (e) {
+      return "?";
+    }
+  }
+  function stopRec(cb) {
+    if (!rec) {
+      cb && cb();
+      return;
+    }
+    const r = rec;
+    rec = null;
+    flushCb = cb || null;
+    try {
+      r.stop();
+    } catch (e) {
+      flushCb = null;
+      cb && cb();
+    }
+  }
+  function startRec(c) {
+    if (!MT || !c.captureStream) return;
+    let st;
+    try {
+      st = c.captureStream(FPS);
+    } catch (e) {
+      return;
+    }
+    let r;
+    try {
+      r = new MediaRecorder(st, { mimeType: MT, videoBitsPerSecond: BPS });
+    } catch (e) {
+      return;
+    }
+    const my = [], t0 = Date.now(), g = gname();
+    r.ondataavailable = (e) => {
+      if (e.data && e.data.size) my.push(e.data);
+    };
+    r.onstop = () => {
+      try {
+        st.getTracks().forEach((t) => t.stop());
+      } catch (e) {
+      }
+      if (my.length) {
+        segs.push({ blob: new Blob(my, { type: MT }), t0, t1: Date.now(), g });
+        while (segs.length > KEEP) segs.shift();
+      }
+      const cb = flushCb;
+      flushCb = null;
+      cb && cb();
+    };
+    try {
+      r.start(1e3);
+    } catch (e) {
+      return;
+    }
+    rec = r;
+    recCan = c;
+    recStart = t0;
+    recG = g;
+  }
+  setInterval(() => {
+    const c = bigCanvas();
+    if (rec && (c !== recCan || !c)) {
+      stopRec();
+      return;
+    }
+    if (!rec && c) {
+      startRec(c);
+      return;
+    }
+    if (rec && Date.now() - recStart > SEG) {
+      stopRec(() => {
+        const c2 = bigCanvas();
+        if (c2) startRec(c2);
+      });
+    }
+  }, 700);
+  const b64 = (b) => new Promise((r) => {
+    const f = new FileReader();
+    f.onload = () => r(String(f.result).split(",")[1] || "");
+    f.onerror = () => r("");
+    f.readAsDataURL(b);
+  });
+  async function send(rid) {
+    const s = S();
+    const now = Date.now();
+    const list = segs.filter((x) => now - x.t1 < 62e3);
+    if (!list.length) {
+      s.pub("rp/" + s.UID + "/c", { rid, none: 1, why: MT ? "Geen spel met beeld in de laatste minuut." : "Dit toestel kan geen video opnemen." }, false);
+      return;
+    }
+    const P = 14e4;
+    for (let i = 0; i < list.length; i++) {
+      const d = await b64(list[i].blob);
+      const m = Math.ceil(d.length / P) || 1;
+      for (let j = 0; j < m; j++) {
+        s.pub("rp/" + s.UID + "/c", { rid, i, n: list.length, j, m, mt: MT, g: list[i].g, t0: list[i].t0, t1: list[i].t1, d: d.slice(j * P, (j + 1) * P) }, false);
+        await new Promise((r) => setTimeout(r, 180));
+      }
+    }
+  }
+  function init() {
+    const s = S();
+    if (!s || !s.UID) return setTimeout(init, 2e3);
+    s.sub("rp/" + s.UID + "/req", (t, d) => {
+      const a = A();
+      if (!d || !a || d.otk !== a.OWNTOK || Math.abs(Date.now() - (d.ts || 0)) > 12e4) return;
+      toast("🎬 De owner bekijkt je laatste minuut spel");
+      stopRec(() => {
+        send(d.rid);
+        const c = bigCanvas();
+        if (c) startRec(c);
+      });
+    });
+  }
+  setTimeout(init, 2500);
+  function view(uid, name) {
+    const s = S(), a = A();
+    if (!s || !a || !a.isOwn()) return toast("Alleen voor de owner");
+    uid = String(uid || "").toUpperCase();
+    const rid = Math.random().toString(36).slice(2, 9);
+    const o = document.createElement("div");
+    o.setAttribute("data-noi18n", "");
+    o.style.cssText = "position:fixed;inset:0;z-index:99990;background:#0b0a18f2;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:16px;font-family:system-ui";
+    o.innerHTML = '<b style="font-size:18px">🎬 Laatste minuut van ' + (name || uid).replace(/</g, "") + '</b><video controls muted playsinline style="max-width:96vw;max-height:72vh;border-radius:12px;background:#000;display:none"></video><div class="rpm" style="opacity:.85">⏳ Opvragen…</div><div class="rpb" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center"></div><button class="btn sec">✕ Sluiten</button>';
+    document.body.append(o);
+    const v = o.querySelector("video"), msg = o.querySelector(".rpm"), bar = o.querySelector(".rpb");
+    let clips = [], parts = {}, done = false, cur2 = 0;
+    const close = () => {
+      done = true;
+      clips.forEach((c) => URL.revokeObjectURL(c.u));
+      o.remove();
+    };
+    o.querySelector("button.btn").onclick = close;
+    function play(i) {
+      if (!clips[i]) return;
+      cur2 = i;
+      v.src = clips[i].u;
+      v.style.display = "";
+      v.play().catch(() => {
+      });
+      msg.textContent = "▶️ Deel " + (i + 1) + "/" + clips.length + " · " + clips[i].g + " · " + new Date(clips[i].t0).toLocaleTimeString();
+      [...bar.children].forEach((b, k) => b.style.outline = k === i ? "2px solid #fff" : "");
+    }
+    v.onended = () => {
+      if (cur2 + 1 < clips.length) play(cur2 + 1);
+    };
+    s.sub("rp/" + uid + "/c", (t, d) => {
+      if (done || !d || d.rid !== rid) return;
+      if (d.none) {
+        msg.textContent = "😶 " + (d.why || "Niets opgenomen.");
+        return;
+      }
+      const k = d.i;
+      (parts[k] = parts[k] || { n: d.m, got: {}, meta: d }).got[d.j] = d.d;
+      const p = parts[k];
+      msg.textContent = "📥 Ontvangen: deel " + (k + 1) + "/" + d.n + " (" + Object.keys(p.got).length + "/" + p.n + ")";
+      if (Object.keys(p.got).length === p.n && !p.ok) {
+        p.ok = 1;
+        const str = Array.from({ length: p.n }, (_, j) => p.got[j]).join("");
+        const bin = atob(str), u8 = new Uint8Array(bin.length);
+        for (let q = 0; q < bin.length; q++) u8[q] = bin.charCodeAt(q);
+        clips[k] = { u: URL.createObjectURL(new Blob([u8], { type: d.mt })), g: d.g, t0: d.t0 };
+        const b = document.createElement("button");
+        b.className = "btn sec";
+        b.textContent = "Deel " + (k + 1);
+        b.onclick = () => play(k);
+        bar.append(b);
+        if (v.style.display === "none" && clips[0]) play(0);
+      }
+    });
+    setTimeout(() => s.pub("rp/" + uid + "/req", { otk: a.OWNTOK, ts: Date.now(), rid }, false), 400);
+    setTimeout(() => {
+      if (!done && !clips.length && /Opvragen/.test(msg.textContent)) msg.textContent = "📡 Geen antwoord. Is die speler nu online?";
+    }, 15e3);
+  }
+  window.SPZ_REPLAY = view;
+  setInterval(() => {
+    const a = A();
+    if (!a || !a.isOwn || !a.isOwn()) return;
+    document.querySelectorAll(".pfx").forEach((x) => {
+      if (x.querySelector(".rpbtn")) return;
+      const h = x.closest("[data-uid]");
+      const uid = h && h.dataset.uid;
+      if (!uid || S() && uid === S().UID) return;
+      const b = document.createElement("button");
+      b.className = "btn sec rpbtn";
+      b.textContent = "🎬 Laatste minuut bekijken";
+      b.onclick = () => {
+        const n = (h.querySelector("h3,b") || {}).textContent;
+        view(uid, n);
+      };
+      x.append(b);
+    });
+  }, 1200);
+})();
+;
+(function() {
   {
     const cs = document.createElement("style");
     cs.textContent = ".q3veil{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle,#2a1f5c,#0b0a18);color:#fff;font-weight:800;border-radius:inherit;transition:opacity .3s;pointer-events:none}.q3veil div{text-align:center}.q3veil b{display:block;font-size:44px;animation:q3s 1.2s ease-in-out infinite}@keyframes q3s{50%{transform:rotate(180deg) scale(1.15)}}";
