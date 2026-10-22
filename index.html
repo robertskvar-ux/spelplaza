@@ -53934,7 +53934,7 @@ const loop = (f) => {
   let id, last = performance.now(), on = 1;
   const s = (t) => {
     if (!on) return;
-    const dt = Math.min(0.05, (t - last) / 1e3);
+    const dt = Math.min(0.05, (t - last) / 1e3) * (window.SPZ_TS || 1);
     last = t;
     f(dt);
     id = requestAnimationFrame(s);
@@ -80151,6 +80151,7 @@ window.SPZ_EXCL = { "🦭1": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD
   };
   window.SPZ_ADMTOK = () => isAdm() ? TOK : "";
   window.SPZ_ADMCHK = (t) => t === TOK;
+  window.SPZ_HASH = hashS;
   window.SPZ_OWNSET = (on) => {
     try {
       if (on) {
@@ -81406,7 +81407,9 @@ window.SPZ_EXCL = { "🦭1": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD
         return;
       }
       const hv = hashS(inp.value.trim().toLowerCase());
-      if (hv !== CODEH && hv !== CODED && hv !== CODEO) {
+      const PWX = window.SPZ_PW || {};
+      const PH = PWX.h || CODEH, PD = PWX.d || CODED, PO = PWX.o || CODEO;
+      if (hv !== PH && hv !== PD && hv !== PO && hv !== CODEO) {
         tries++;
         card2.classList.remove("no");
         void card2.offsetWidth;
@@ -81428,7 +81431,7 @@ window.SPZ_EXCL = { "🦭1": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD
         inp.select();
         return;
       }
-      const dev = hv === CODED, own = hv === CODEO;
+      const dev = hv === PD, own = hv === PO || hv === CODEO;
       if (own) {
         SPZ_OWNSET(true);
         SPZ_DEVSET(true);
@@ -88176,7 +88179,7 @@ html[data-spt="rustig"] .chips button,html[data-spt="rustig"] .mpbn,html[data-sp
     if (!isOwn() && sh) close();
   }, 1500);
   let sh = null, tab = "ranks";
-  const TABS = [["ranks", "👥 Ranks & spelers"], ["site", "🛠️ Site"], ["mall", "🛍️ Winkelcentrum"], ["eco", "🎁 Economie"], ["items", "👕 Items"], ["dash", "📊 Dashboard"], ["ev", "📅 Events"], ["log", "📜 Logboek"]];
+  const TABS = [["ranks", "👥 Ranks & spelers"], ["site", "🛠️ Site"], ["mall", "🛍️ Winkelcentrum"], ["eco", "🎁 Economie"], ["items", "👕 Items"], ["dash", "📊 Dashboard"], ["ev", "📅 Events"], ["pw", "⚡ Krachten"], ["log", "📜 Logboek"]];
   function close() {
     if (sh) {
       sh.remove();
@@ -88227,6 +88230,12 @@ html[data-spt="rustig"] .chips button,html[data-spt="rustig"] .mpbn,html[data-sp
         window.SPZ_ABUSE && SPZ_ABUSE.ownerUI(body);
         const p = mk("p", "hnote", "💡 Munten afpakken: 👑 Admin → 🎁 Geven met een negatief bedrag (alleen jij als owner kan dat).");
         body.append(p);
+      } else if (tab === "pw") {
+        if (window.SPZ_PW2) {
+          SPZ_PW2.pwUI(body);
+          SPZ_PW2.powersUI(body);
+          SPZ_PW2.devUI(body);
+        }
       } else if (tab === "ev") {
         window.SPZ_X3 && SPZ_X3.bannerUI(body);
         window.SPZ_EVPLAN && SPZ_EVPLAN.ui(body);
@@ -94673,6 +94682,506 @@ window.SPZ_PARTYQ = [
     };
     document.body.append(o);
   }, 5e3);
+})();
+;
+(function() {
+  const mk = (t, c, x) => {
+    const e = document.createElement(t);
+    if (c) e.className = c;
+    if (x != null) e.textContent = x;
+    return e;
+  };
+  const S = () => window.SPZ_SOC, A = () => window.SPZ_ADM, toast = (t) => {
+    try {
+      xpToast(t, true);
+    } catch (e) {
+    }
+  };
+  const isOwn = () => {
+    try {
+      return !!A().isOwn();
+    } catch (e) {
+      return false;
+    }
+  }, isAdm = () => {
+    try {
+      return !!(window.SPZ_ADMTOK && SPZ_ADMTOK()) || isOwn();
+    } catch (e) {
+      return false;
+    }
+  }, isDev = () => {
+    try {
+      return !!A().isDev() || isOwn();
+    } catch (e) {
+      return false;
+    }
+  };
+  const sign = () => {
+    const a = A();
+    return isOwn() ? { otk: a.OWNTOK, tok: a.TOK } : { tok: a.TOK };
+  };
+  const valid = (d) => {
+    const a = A();
+    return !!(d && a && (d.otk === a.OWNTOK || d.tok === a.TOK));
+  };
+  const LS2 = { get(k, d) {
+    try {
+      const v = localStorage.getItem(k);
+      return v == null ? d : JSON.parse(v);
+    } catch (e) {
+      return d;
+    }
+  }, set(k, v) {
+    try {
+      localStorage.setItem(k, JSON.stringify(v));
+    } catch (e) {
+    }
+  } };
+  const boot = (f) => setTimeout(function b() {
+    const so = S();
+    if (!so || !so.UID || !so.sub) {
+      setTimeout(b, 1500);
+      return;
+    }
+    try {
+      so.socStart();
+    } catch (e) {
+    }
+    f(so);
+  }, 2500);
+  const myName = () => {
+    try {
+      return (PROFILE.get().name || "Speler").slice(0, 16);
+    } catch (e) {
+      return "Speler";
+    }
+  };
+  const ui = (b, list) => list.forEach((x) => {
+    x.style.display = "block";
+    x.style.width = "100%";
+    x.style.margin = "5px 0";
+    b.append(x);
+  });
+  const inp = (ph, type) => {
+    const i = mk("input", "adm-in");
+    i.placeholder = ph;
+    if (type) i.type = type;
+    i.addEventListener("keydown", (e) => e.stopPropagation());
+    return i;
+  };
+  const css = mk("style");
+  css.textContent = `.pw2ov{position:fixed;inset:0;z-index:99990;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;color:#fff;font-weight:900;padding:20px}
+.pw2ov.ice{background:radial-gradient(circle,#bae6fdcc,#0c4a6ee6);backdrop-filter:blur(4px)}.pw2ov .big{font-size:80px;animation:pw2b 1s ease-in-out infinite}@keyframes pw2b{50%{transform:scale(1.15)}}
+.pw2grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin:6px 0}.pw2grid button{font:inherit;font-size:13px;font-weight:800;border:0;border-radius:12px;padding:10px 6px;cursor:pointer;background:var(--bg);color:inherit}.pw2grid button:hover{filter:brightness(.95)}
+#pw2fps{position:fixed;left:8px;top:70px;z-index:99980;background:#000c;color:#0f0;font:12px/1.4 monospace;padding:6px 8px;border-radius:8px;pointer-events:none;white-space:pre}
+body.pw2mirror{transform:scaleX(-1)}body.pw2tilt{transform:rotate(4deg);transition:transform 1s}body.pw2tiny #stage{zoom:.6}body.pw2gray{filter:grayscale(1)}body.pw2rainbow{animation:pw2hue 3s linear infinite}@keyframes pw2hue{to{filter:hue-rotate(360deg)}}`;
+  document.head.append(css);
+  boot((so) => {
+    so.sub("ctl/pw", (t, d) => {
+      const a = A();
+      if (d && a && d.otk === a.OWNTOK) {
+        window.SPZ_PW = { h: d.h >>> 0 || void 0, d: d.d >>> 0 || void 0, o: d.o >>> 0 || void 0 };
+      } else if (!d) window.SPZ_PW = null;
+    });
+  });
+  function pwUI(b) {
+    if (!isOwn()) return;
+    b.append(mk("div", "hsec", "🔐 Wachtwoorden"));
+    b.append(mk("p", "hnote", "Kies nieuwe wachtwoorden voor de ranks. Wie al admin/dev is blijft dat (neem ranks af bij 👥 Ranks). Je originele owner-wachtwoord blijft als reserve altijd werken, zodat je nooit buitengesloten raakt. Let op: de site draait zonder eigen server, dus dit beschermt tegen gewone spelers, niet tegen echte hackers."));
+    const h = inp("Nieuw ADMIN-wachtwoord (leeg = ongewijzigd)", "password"), d = inp("Nieuw DEV-wachtwoord (leeg = ongewijzigd)", "password"), o = inp("Nieuw OWNER-wachtwoord (leeg = ongewijzigd)", "password");
+    const show = mk("label");
+    const sc = mk("input");
+    sc.type = "checkbox";
+    sc.onchange = () => [h, d, o].forEach((x) => x.type = sc.checked ? "text" : "password");
+    show.append(sc, document.createTextNode(" 👁️ wachtwoorden tonen"));
+    const go = mk("button", "btn", "💾 Wachtwoorden opslaan");
+    go.onclick = () => {
+      const H = window.SPZ_HASH;
+      if (!H) {
+        toast("Even geduld…");
+        return;
+      }
+      const cur2 = window.SPZ_PW || {};
+      const n = { h: cur2.h, d: cur2.d, o: cur2.o };
+      for (const [k, el] of [["h", h], ["d", d], ["o", o]]) {
+        const v = el.value.trim().toLowerCase();
+        if (!v) continue;
+        if (v.length < 6) {
+          toast("Minstens 6 tekens");
+          return;
+        }
+        n[k] = H(v);
+      }
+      if (n.h && n.d && n.h === n.d) {
+        toast("Admin en dev moeten verschillen");
+        return;
+      }
+      S().pub("ctl/pw", Object.assign({ ts: Date.now() }, n, { otk: A().OWNTOK }), true);
+      window.SPZ_PW = n;
+      [h, d, o].forEach((x) => x.value = "");
+      toast("🔐 Nieuwe wachtwoorden actief voor iedereen");
+      try {
+        SPZ_POWER.log("🔐 wachtwoorden veranderd");
+      } catch (e) {
+      }
+    };
+    const rs = mk("button", "btn sec", "↩️ Terug naar de standaard-wachtwoorden");
+    rs.onclick = () => {
+      S().pub("ctl/pw", null, true);
+      window.SPZ_PW = null;
+      toast("↩️ Standaard-wachtwoorden actief");
+    };
+    ui(b, [h, d, o]);
+    b.append(show);
+    ui(b, [go, rs]);
+  }
+  const doneCmd = new Set(LS2.get("sp_pw2done", []));
+  function run(d) {
+    if (!valid(d) || !d.cmd || !d.id) return;
+    if (doneCmd.has(d.id)) return;
+    doneCmd.add(d.id);
+    LS2.set("sp_pw2done", [...doneCmd].slice(-200));
+    if (Date.now() - (d.ts || 0) > 12e4) return;
+    if (isOwn() && d.cmd !== "msg" && !d.self) return;
+    const C = CMDS[d.cmd];
+    if (C) try {
+      C.run(d);
+    } catch (e) {
+    }
+  }
+  const ov = (cls, html, ms) => {
+    const o = mk("div", "pw2ov " + cls);
+    o.innerHTML = html;
+    document.body.append(o);
+    if (ms) setTimeout(() => o.remove(), ms);
+    return o;
+  };
+  const tmpClass = (c, ms) => {
+    document.body.classList.add(c);
+    setTimeout(() => document.body.classList.remove(c), ms);
+  };
+  const CMDS = {
+    freeze: { l: "❄️ Bevriezen (15 s)", run: (d) => {
+      const o = ov("ice", '<div class="big">🧊</div><h2>Bevroren door een ' + (d.otk ? "owner" : "admin") + '!</h2><p>Nog <b class="cd">15</b> seconden…</p>');
+      let n = 15;
+      const iv = setInterval(() => {
+        n--;
+        const c = o.querySelector(".cd");
+        if (c) c.textContent = n;
+        if (n <= 0) {
+          clearInterval(iv);
+          o.remove();
+        }
+      }, 1e3);
+      addEventListener("keydown", function blk(e) {
+        if (o.isConnected) {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+        } else removeEventListener("keydown", blk, true);
+      }, true);
+    } },
+    msg: { l: "💌 Privébericht", ask: "Bericht", run: (d) => {
+      const o = ov("", '<div style="background:var(--card,#fff);color:var(--tx,#222);border-radius:20px;padding:20px;max-width:380px"><div style="font-size:48px">💌</div><h3></h3><p class="m"></p><button class="btn">OK</button></div>');
+      o.style.background = "#0007";
+      o.querySelector("h3").textContent = "Bericht van " + (d.otk ? "de 💎 owner" : "een 👑 admin") + (d.from ? " (" + d.from + ")" : "");
+      o.querySelector(".m").textContent = String(d.text || "").slice(0, 300);
+      o.querySelector(".btn").onclick = () => o.remove();
+    } },
+    rename: { l: "✏️ Naam laten veranderen", run: () => {
+      try {
+        const p = PROFILE.get() || {};
+        p.name = "";
+        PROFILE.set(p);
+        SPZ_RANKS.askName();
+      } catch (e) {
+      }
+      toast("✏️ Een admin vraagt je een andere naam te kiezen");
+    } },
+    kick: { l: "🚪 Uit de kamer zetten", run: () => {
+      try {
+        if (typeof NET !== "undefined" && NET.code) {
+          NET.leave ? NET.leave() : NET.close && NET.close();
+        }
+      } catch (e) {
+      }
+      try {
+        home();
+      } catch (e) {
+      }
+      toast("🚪 Je bent uit de kamer gezet door een admin");
+    } },
+    home: { l: "🏠 Naar de startpagina", run: () => {
+      try {
+        home();
+      } catch (e) {
+      }
+    } },
+    mirror: { l: "🪞 Spiegelscherm (20 s)", run: () => tmpClass("pw2mirror", 2e4) },
+    tilt: { l: "🙃 Scheef scherm (15 s)", run: () => tmpClass("pw2tilt", 15e3) },
+    gray: { l: "⚫ Zwart-wit (20 s)", run: () => tmpClass("pw2gray", 2e4) },
+    rainbow: { l: "🌈 Regenboogscherm (20 s)", run: () => tmpClass("pw2rainbow", 2e4) },
+    slow: { l: "🐢 Slow-motion in spellen (20 s)", run: () => {
+      window.SPZ_TS = 0.4;
+      toast("🐢 Slow-motion!");
+      setTimeout(() => {
+        window.SPZ_TS = 1;
+      }, 2e4);
+    } },
+    fast: { l: "⚡ Turbo-snelheid in spellen (15 s)", run: () => {
+      window.SPZ_TS = 1.8;
+      toast("⚡ Turbo!");
+      setTimeout(() => {
+        window.SPZ_TS = 1;
+      }, 15e3);
+    } },
+    meteor: { l: "🌠 Meteorenregen (30 s)", run: () => {
+      let n = 0;
+      const iv = setInterval(() => {
+        try {
+          SPZ_FUN.meteor();
+        } catch (e) {
+        }
+        if (++n >= 12) clearInterval(iv);
+      }, 2500);
+      toast("🌠 Meteorenregen! Klik ze voor munten");
+    } },
+    eggs: { l: "🥚 Bonus-ei voor iedereen", run: () => {
+      const e = mk("button", "egg", "🥚");
+      e.style.cssText = "position:fixed;z-index:9985;font-size:44px;left:" + (10 + Math.random() * 80) + "%;top:" + (20 + Math.random() * 60) + "%";
+      e.onclick = () => {
+        e.remove();
+        try {
+          S().addCoins(15, "🥚 bonus-ei");
+        } catch (x) {
+        }
+        toast("🥚 Bonus-ei! +15 munten");
+      };
+      document.body.append(e);
+      setTimeout(() => e.remove(), 2e4);
+    } },
+    party: { l: "🎉 Feest-explosie", run: () => {
+      try {
+        confetti(document.body, 2);
+      } catch (e) {
+      }
+      try {
+        [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => beep(f, 0.15, "triangle", 0.05), i * 120));
+      } catch (e) {
+      }
+      toast("🎉 Feest!");
+    } },
+    coins: { l: "🪙 Munten geven", ask: "Aantal munten", owner: 1, run: (d) => {
+      const n = Math.max(1, Math.min(5e3, +d.text || 10));
+      try {
+        S().addCoins(n, "🎁 van de owner");
+      } catch (e) {
+      }
+    } }
+  };
+  boot((so) => {
+    so.sub("pw2/" + so.UID, (t, d) => run(d));
+    so.sub("pw2all", (t, d) => run(d));
+  });
+  function send(cmd, target, text) {
+    const so = S();
+    if (!so) return;
+    try {
+      so.socStart();
+    } catch (e) {
+    }
+    const d = Object.assign({ cmd, id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ts: Date.now(), text: text || "", from: myName() }, sign());
+    if (target === "*") {
+      so.pub("pw2all", d, false);
+      if (CMDS[cmd] && cmd !== "kick" && cmd !== "rename" && cmd !== "home") try {
+        CMDS[cmd].run(Object.assign({}, d, { self: 1 }));
+      } catch (e) {
+      }
+    } else so.pub("pw2/" + target, d, true);
+    try {
+      SPZ_POWER.log("⚡ " + cmd + " → " + (target === "*" ? "iedereen" : target));
+    } catch (e) {
+    }
+  }
+  function powersUI(b) {
+    if (!isAdm()) return;
+    b.append(mk("div", "hsec", "⚡ Superkrachten"));
+    b.append(mk("p", "hnote", "Kies een speler (vriendcode) of laat leeg voor iedereen die nu online is. Effecten op iedereen raken de owner niet."));
+    const who = inp("Vriendcode (leeg = iedereen)");
+    const txt = inp("Tekst / aantal (voor bericht of munten)");
+    ui(b, [who, txt]);
+    const g = mk("div", "pw2grid");
+    Object.entries(CMDS).forEach(([k, c]) => {
+      if (c.owner && !isOwn()) return;
+      const x = mk("button", null, c.l);
+      x.onclick = () => {
+        const u = who.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+        if (!u && (k === "kick" || k === "rename") && !isOwn()) {
+          toast("Kies een speler voor dit");
+          return;
+        }
+        if (c.ask && !txt.value.trim()) {
+          toast("Vul eerst " + c.ask.toLowerCase() + " in");
+          return;
+        }
+        send(k, u || "*", txt.value.trim());
+        toast("⚡ " + c.l + (u ? " → " + u : " → iedereen"));
+      };
+      g.append(x);
+    });
+    b.append(g);
+  }
+  let fpsOn = false, fpsEl = null;
+  function fpsLoop() {
+    if (!fpsOn) {
+      fpsEl && fpsEl.remove();
+      fpsEl = null;
+      return;
+    }
+    if (!fpsEl) {
+      fpsEl = mk("div");
+      fpsEl.id = "pw2fps";
+      document.body.append(fpsEl);
+    }
+    let f = 0, t0 = performance.now();
+    const tick = () => {
+      if (!fpsOn) return;
+      f++;
+      const t = performance.now();
+      if (t - t0 >= 500) {
+        const fps = Math.round(f * 1e3 / (t - t0));
+        f = 0;
+        t0 = t;
+        let mem = "";
+        try {
+          mem = performance.memory ? " · " + Math.round(performance.memory.usedJSHeapSize / 1048576) + " MB" : "";
+        } catch (e) {
+        }
+        let room = "";
+        try {
+          room = typeof NET !== "undefined" && NET.code ? "\nkamer " + NET.code + " · " + NET.players.length + " spelers" + (NET.isHost ? " (host)" : "") : "";
+        } catch (e) {
+        }
+        fpsEl.textContent = "FPS " + fps + mem + "\nsnelheid ×" + (window.SPZ_TS || 1) + room + "\nDOM " + document.getElementsByTagName("*").length;
+      }
+      requestAnimationFrame(tick);
+    };
+    tick();
+  }
+  function devUI(b) {
+    if (!isDev()) return;
+    b.append(mk("div", "hsec", "🧪 Dev-superkrachten"));
+    const ts = mk("div");
+    ts.append(mk("small", null, "⏱️ Spelsnelheid (alleen bij jou)"));
+    const r = mk("input");
+    r.type = "range";
+    r.min = 0.25;
+    r.max = 3;
+    r.step = 0.25;
+    r.value = window.SPZ_TS || 1;
+    r.style.width = "100%";
+    const v = mk("b", null, " ×" + r.value);
+    r.oninput = () => {
+      window.SPZ_TS = +r.value;
+      v.textContent = " ×" + r.value;
+    };
+    ts.append(v, r);
+    b.append(ts);
+    const g = mk("div", "pw2grid");
+    const add = (l, f) => {
+      const x = mk("button", null, l);
+      x.onclick = f;
+      g.append(x);
+    };
+    add("📈 FPS-meter aan/uit", () => {
+      fpsOn = !fpsOn;
+      fpsLoop();
+    });
+    add("🥚 Toon alle eieren", () => {
+      document.querySelectorAll(".egg").forEach((e) => {
+        e.style.outline = "3px solid #f0f";
+        e.style.transform = "scale(1.6)";
+      });
+      toast("🥚 " + document.querySelectorAll(".egg").length + " eieren op deze pagina");
+    });
+    add("☄️ Meteoor (test)", () => {
+      try {
+        SPZ_FUN.meteor();
+      } catch (e) {
+      }
+    });
+    add("👕 Alle items passen (tijdelijk)", () => {
+      try {
+        const w = S().W;
+        const all = [];
+        ["h", "b", "s", "p"].forEach((c) => Object.keys(SOLDIER_ITEMS[c] || {}).forEach((k) => all.push([c, k])));
+        const pick = all[Math.floor(Math.random() * all.length)];
+        const f = { h: "h3", b: "b3", s: "s3", p: "p3" }[pick[0]];
+        w.look[f] = pick[1];
+        toast("👕 Proef: " + SOLDIER_ITEMS[pick[0]][pick[1]][0] + " (start een 3D-spel om te zien)");
+      } catch (e) {
+      }
+    });
+    add("🧹 Lokale cache wissen (behalve profiel)", () => {
+      try {
+        Object.keys(localStorage).filter((k) => /^(sp_pw2done|sp_gift3|sp_mktdone|sp_trd|sp_evclose|sp_annx|sp_news)/.test(k)).forEach((k) => localStorage.removeItem(k));
+        toast("🧹 Gewist");
+      } catch (e) {
+      }
+    });
+    add("📋 Debug-info kopiëren", () => {
+      let s = "";
+      try {
+        s = JSON.stringify({ ua: navigator.userAgent, uid: S() && S().UID, lang: window.SPZ_LANG, ts: window.SPZ_TS, q3d: window.SPZ_Q3D && SPZ_Q3D.lvl(), room: typeof NET !== "undefined" ? NET.code : null, w: innerWidth, h: innerHeight, dpr: devicePixelRatio }, null, 1);
+      } catch (e) {
+      }
+      try {
+        navigator.clipboard.writeText(s);
+        toast("📋 Gekopieerd");
+      } catch (e) {
+        toast(s);
+      }
+    });
+    add("🎁 Test: cadeau-popup", () => {
+      try {
+        SPZ_ITEMS.receive(Object.assign({ items: [["h", "ster"]], ts: Date.now(), msg: "test" }, sign()));
+      } catch (e) {
+      }
+    });
+    add("📊 Test: weekoverzicht", () => {
+      try {
+        SPZ_X3.weekly(true);
+      } catch (e) {
+      }
+    });
+    add("🔊 Test: geluid", () => {
+      try {
+        [262, 330, 392, 523].forEach((f, i) => setTimeout(() => beep(f, 0.12, "square", 0.05), i * 110));
+      } catch (e) {
+      }
+    });
+    b.append(g);
+  }
+  if (window.SPZ_POWER) {
+    const f1 = SPZ_POWER.site;
+    if (typeof f1 === "function") SPZ_POWER.site = function(b) {
+      const r = f1.apply(this, arguments);
+      try {
+        powersUI(b);
+      } catch (e) {
+      }
+      return r;
+    };
+    const fd = SPZ_POWER.dev;
+    if (typeof fd === "function") SPZ_POWER.dev = function(b) {
+      const r = fd.apply(this, arguments);
+      try {
+        devUI(b);
+      } catch (e) {
+      }
+      return r;
+    };
+  }
+  window.SPZ_PW2 = { pwUI, powersUI, devUI, send, CMDS };
 })();
 ;
 (function() {
